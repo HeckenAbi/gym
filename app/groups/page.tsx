@@ -71,6 +71,12 @@ export default function GroupsPage() {
   async function createGroup(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
+    try {
+      new Intl.DateTimeFormat("de-DE", { timeZone: timezone }).format(new Date());
+    } catch {
+      setError("Bitte gib eine gültige Zeitzone ein, zum Beispiel Europe/Berlin.");
+      return;
+    }
     setSaving(true);
     setError("");
     setMessage("");
@@ -80,8 +86,23 @@ export default function GroupsPage() {
       p_timezone: timezone,
     });
     setSaving(false);
-    if (createError || !data) {
-      setError("Die Gruppe konnte nicht erstellt werden. Prüfe den Namen und deine Verbindung.");
+    if (createError) {
+      const errorText = `${createError.code ?? ""} ${createError.message ?? ""}`.toLowerCase();
+      if (/pgrst202|schema cache|could not find the function|create_private_group.*does not exist/.test(errorText)) {
+        setError("Die Gruppenfunktionen fehlen in Supabase noch. Die Community-Migration muss zuerst im verbundenen Projekt installiert werden.");
+      } else if (/invalid_group_timezone|time zone|timezone/.test(errorText)) {
+        setError("Supabase hat die Zeitzone abgelehnt. Verwende einen gültigen IANA-Namen, zum Beispiel Europe/Berlin.");
+      } else if (/42501|authentication_required|permission denied/.test(errorText)) {
+        setError("Deine Anmeldung ist abgelaufen oder hat keine Berechtigung. Bitte melde dich erneut an.");
+      } else if (/fetch|network|enotfound|failed to reach|dns/.test(errorText)) {
+        setError("Supabase ist nicht erreichbar oder diese Vorschau ist nicht mit einem echten Projekt verbunden. Prüfe die Hosting-Verbindung.");
+      } else {
+        setError(`Die Gruppe konnte nicht erstellt werden (Supabase-Code ${createError.code || "unbekannt"}). Prüfe die Projektmigration und versuche es erneut.`);
+      }
+      return;
+    }
+    if (!data) {
+      setError("Supabase hat keine Gruppen-ID zurückgegeben. Bitte lade die Seite neu.");
       return;
     }
     router.push(`/groups/${data}`);

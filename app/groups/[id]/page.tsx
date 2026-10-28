@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "../../../src/components/AppShell";
 import { supabase } from "../../../src/lib/supabase";
@@ -44,6 +44,7 @@ type FeedItem = {
   workout_name: string;
   finished_at: string;
   shared_at: string;
+  counts_for_points: boolean;
   exercise_count: number;
   set_count: number;
   total_volume: number | string;
@@ -68,6 +69,28 @@ type LeaderboardRow = {
   workout_days: number;
   week_start: string;
   timezone: string;
+};
+
+type SeasonLeaderboardRow = {
+  rank: number;
+  user_id: string;
+  display_name: string;
+  points: number;
+  workout_days: number;
+  weeks_counted: number;
+  season_start: string;
+  season_end: string;
+  timezone: string;
+};
+
+type WeeklyChallenge = {
+  week_start: string;
+  timezone: string;
+  active_members: number;
+  members_at_goal: number;
+  target_per_member: number;
+  completed: boolean;
+  progress_percent: number;
 };
 
 type TabName = "feed" | "leaderboard" | "members";
@@ -97,7 +120,11 @@ function GroupDetailsContent() {
   const [invites, setInvites] = useState<GroupInvite[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
+  const [seasonLeaderboard, setSeasonLeaderboard] = useState<SeasonLeaderboardRow[]>([]);
+  const [weeklyChallenge, setWeeklyChallenge] = useState<WeeklyChallenge | null>(null);
+  const [leaderboardMode, setLeaderboardMode] = useState<"week" | "season">("week");
   const [weekOffset, setWeekOffset] = useState<0 | 1>(0);
+  const [seasonOffset, setSeasonOffset] = useState<0 | 1>(0);
   const [tab, setTab] = useState<TabName>("feed");
   const [loading, setLoading] = useState(true);
   const [tabLoading, setTabLoading] = useState(false);
@@ -115,6 +142,7 @@ function GroupDetailsContent() {
   const [leaving, setLeaving] = useState(false);
   const [adminActionBusy, setAdminActionBusy] = useState(false);
   const [newOwnerId, setNewOwnerId] = useState("");
+  const leaderboardRequestId = useRef(0);
 
   const loadOverview = useCallback(async () => {
     if (!groupId) return;
@@ -154,16 +182,30 @@ function GroupDetailsContent() {
     setTabLoading(false);
   }, [groupId]);
 
-  const loadLeaderboard = useCallback(async (offset: 0 | 1) => {
+  const loadLeaderboard = useCallback(async (mode: "week" | "season", offset: 0 | 1) => {
     if (!groupId) return;
+    const requestId = ++leaderboardRequestId.current;
     setTabLoading(true);
     setError("");
-    const { data, error: leaderboardError } = await supabase.rpc("get_group_leaderboard", {
-      p_group_id: groupId,
-      p_week_offset: offset,
-    });
-    if (leaderboardError) setError("Die Rangliste konnte nicht geladen werden. Bitte versuche es erneut.");
-    else setLeaderboard((data ?? []) as LeaderboardRow[]);
+    if (mode === "week") {
+      const [ranking, challenge] = await Promise.all([
+        supabase.rpc("get_group_leaderboard", { p_group_id: groupId, p_week_offset: offset }),
+        supabase.rpc("get_group_weekly_challenge", { p_group_id: groupId, p_week_offset: offset }),
+      ]);
+      if (requestId !== leaderboardRequestId.current) return;
+      if (ranking.error) setError("Die Wochenrangliste konnte nicht geladen werden.");
+      else setLeaderboard((ranking.data ?? []) as LeaderboardRow[]);
+      if (challenge.error) setError("Das Crew-Ziel konnte nicht geladen werden.");
+      else setWeeklyChallenge((challenge.data?.[0] ?? null) as WeeklyChallenge | null);
+    } else {
+      const { data, error: seasonError } = await supabase.rpc("get_group_season_leaderboard", {
+        p_group_id: groupId,
+        p_season_offset: offset,
+      });
+      if (requestId !== leaderboardRequestId.current) return;
+      if (seasonError) setError("Die Saisonrangliste konnte nicht geladen werden.");
+      else setSeasonLeaderboard((data ?? []) as SeasonLeaderboardRow[]);
+    }
     setTabLoading(false);
   }, [groupId]);
 
@@ -181,10 +223,13 @@ function GroupDetailsContent() {
     if (!group) return;
     const timer = window.setTimeout(() => {
       if (tab === "feed") void loadFeed();
-      if (tab === "leaderboard") void loadLeaderboard(weekOffset);
+      if (tab === "leaderboard") void loadLeaderboard(leaderboardMode, leaderboardMode === "week" ? weekOffset : seasonOffset);
     }, 0);
-    return () => window.clearTimeout(timer);
-  }, [group, tab, weekOffset, loadFeed, loadLeaderboard]);
+    return () => {
+      window.clearTimeout(timer);
+      leaderboardRequestId.current += 1;
+    };
+  }, [group, tab, leaderboardMode, weekOffset, seasonOffset, loadFeed, loadLeaderboard]);
 
   const weekLabel = useMemo(() => {
     const start = leaderboard[0]?.week_start;
@@ -194,6 +239,14 @@ function GroupDetailsContent() {
     endDate.setDate(endDate.getDate() + 6);
     return `${startDate.toLocaleDateString("de-DE", { day: "numeric", month: "short" })} – ${endDate.toLocaleDateString("de-DE", { day: "numeric", month: "short", year: "numeric" })}`;
   }, [leaderboard]);
+
+  const seasonLabel = useMemo(() => {
+    const start = seasonLeaderboard[0]?.season_start;
+    const end = seasonLeaderboard[0]?.season_end;
+    if (!start || !end) return "Vier-Wochen-Saison";
+    const format = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString("de-DE", { day: "numeric", month: "short" });
+    return `${format(start)} – ${new Date(`${end}T12:00:00Z`).toLocaleDateString("de-DE", { day: "numeric", month: "short", year: "numeric" })}`;
+  }, [seasonLeaderboard]);
 
   async function createInvite() {
     if (!group || inviteBusy || !["owner", "admin"].includes(group.my_role)) return;
@@ -285,7 +338,8 @@ function GroupDetailsContent() {
   }
 
   async function unshare(item: FeedItem) {
-    if (!window.confirm("Diese Einheit aus dem Gruppenfeed entfernen? Mitglieder verlieren danach auch den Zugriff auf Sätze und Kommentare.")) return;
+    const pointNotice = item.counts_for_points ? " Der zugehörige Liga-Punkt wird ebenfalls entfernt." : "";
+    if (!window.confirm(`Diese Einheit aus dem Gruppenfeed entfernen? Mitglieder verlieren danach auch den Zugriff auf Sätze und Kommentare.${pointNotice}`)) return;
     const { error: unshareError } = await supabase.rpc("unshare_finished_workout", { p_share_id: item.share_id });
     if (unshareError) setError("Freigabe konnte nicht zurückgezogen werden.");
     else {
@@ -379,7 +433,7 @@ function GroupDetailsContent() {
             </div>
           </header>
 
-          {error && <div role="alert" className="glass-soft mb-3 rounded-xl border-red-300/20 px-4 py-3 text-sm text-red-100/85">{error}<button type="button" onClick={() => { if (tab === "feed") void loadFeed(); else if (tab === "leaderboard") void loadLeaderboard(weekOffset); else void loadOverview(); }} className="ml-2 underline underline-offset-4">Erneut laden</button></div>}
+          {error && <div role="alert" className="glass-soft mb-3 rounded-xl border-red-300/20 px-4 py-3 text-sm text-red-100/85">{error}<button type="button" onClick={() => { if (tab === "feed") void loadFeed(); else if (tab === "leaderboard") void loadLeaderboard(leaderboardMode, leaderboardMode === "week" ? weekOffset : seasonOffset); else void loadOverview(); }} className="ml-2 underline underline-offset-4">Erneut laden</button></div>}
           {message && <p role="status" className="glass-soft mb-3 rounded-xl px-4 py-3 text-sm text-white/72">{message}</p>}
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -418,6 +472,7 @@ function GroupDetailsContent() {
                           <span>{item.exercise_count} {item.exercise_count === 1 ? "Übung" : "Übungen"}</span>
                           <span>{item.set_count} {item.set_count === 1 ? "Satz" : "Sätze"}</span>
                           <span>{new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(Number(item.total_volume) || 0)} kg Gesamtvolumen</span>
+                          <span className={item.counts_for_points ? "font-semibold text-white/75" : "text-white/35"}>{item.counts_for_points ? "+1 Liga-Punkt" : "Ohne Liga-Punkt"}</span>
                         </div>
                         {item.details?.length > 0 && <div className="mt-4 space-y-2">
                           {item.details.map((exercise, index) => (
@@ -456,18 +511,49 @@ function GroupDetailsContent() {
               )}
 
               {tab === "leaderboard" && (
-                <section className="glass-panel rounded-[22px] p-4 sm:p-6" aria-label="Wöchentliche Gruppenrangliste">
+                <section className="glass-panel rounded-[22px] p-4 sm:p-6" aria-label="Gruppenrangliste">
                   <header className="flex flex-wrap items-start justify-between gap-3">
-                    <div><p className="text-[10px] font-semibold uppercase tracking-[0.19em] text-white/40">Trainingskonstanz</p><h2 className="mt-2 text-xl font-semibold">Wochenrangliste</h2><p className="mt-1 text-xs text-white/42">{weekLabel || "Gruppenwoche"} · {group.timezone}</p></div>
-                    <div className="flex gap-1 rounded-xl border border-white/[0.08] bg-black/15 p-1"><button type="button" onClick={() => setWeekOffset(0)} aria-pressed={weekOffset === 0} className={`min-h-9 rounded-lg px-3 text-xs ${weekOffset === 0 ? "bg-white/[0.12] text-white" : "text-white/45"}`}>Diese Woche</button><button type="button" onClick={() => setWeekOffset(1)} aria-pressed={weekOffset === 1} className={`min-h-9 rounded-lg px-3 text-xs ${weekOffset === 1 ? "bg-white/[0.12] text-white" : "text-white/45"}`}>Vorwoche</button></div>
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.19em] text-white/40">Trainingskonstanz</p>
+                      <h2 className="mt-2 text-xl font-semibold">{leaderboardMode === "week" ? "Wochenrangliste" : "Saisonrangliste"}</h2>
+                      <p className="mt-1 text-xs text-white/42">{leaderboardMode === "week" ? weekLabel || "Gruppenwoche" : seasonLabel} · {group.timezone}</p>
+                    </div>
+                    <div className="flex gap-1 rounded-xl border border-white/[0.08] bg-black/15 p-1" role="group" aria-label="Ranglistenzeitraum">
+                      <button type="button" onClick={() => setLeaderboardMode("week")} aria-pressed={leaderboardMode === "week"} className={`min-h-9 rounded-lg px-3 text-xs ${leaderboardMode === "week" ? "bg-white/[0.12] text-white" : "text-white/45"}`}>Woche</button>
+                      <button type="button" onClick={() => setLeaderboardMode("season")} aria-pressed={leaderboardMode === "season"} className={`min-h-9 rounded-lg px-3 text-xs ${leaderboardMode === "season" ? "bg-white/[0.12] text-white" : "text-white/45"}`}>Saison</button>
+                    </div>
                   </header>
-                  <p className="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2.5 text-xs leading-5 text-white/48">Ein ausdrücklich geteiltes Training zählt pro lokalem Gruppenkalendertag als ein Punkt, maximal fünf Punkte pro Woche. Private Trainings zählen nicht.</p>
-                  {tabLoading ? <p className="py-8 text-center text-sm text-white/42" aria-live="polite">Rangliste wird berechnet …</p> : leaderboard.length === 0 ? <div className="py-8 text-center"><p className="text-sm text-white/55">Noch keine Mitglieder in der Rangliste.</p><Link href="/training" className="mt-3 inline-flex text-xs underline underline-offset-4">Training protokollieren</Link></div> : <ol className="mt-4 space-y-2">
-                    {leaderboard.map((row) => <li key={row.user_id} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-3 py-3">
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs leading-5 text-white/48">{leaderboardMode === "week" ? "+1 Punkt pro qualifiziertem Trainingstag. Kein Wochenlimit; mehrere Einheiten am selben Tag zählen einmal. Mindestens 3 gültige Sätze und 10 Wiederholungen. Private Trainings zählen nicht." : "Vier Wochen pro Saison; gewertet werden deine drei punktstärksten Wochen. Keine Punkte für Gewicht oder Volumen."}</p>
+                    <div className="flex shrink-0 gap-1 rounded-xl border border-white/[0.08] bg-black/15 p-1">
+                      {leaderboardMode === "week" ? <>
+                        <button type="button" onClick={() => setWeekOffset(0)} aria-pressed={weekOffset === 0} className={`min-h-9 rounded-lg px-3 text-xs ${weekOffset === 0 ? "bg-white/[0.12] text-white" : "text-white/45"}`}>Diese Woche</button>
+                        <button type="button" onClick={() => setWeekOffset(1)} aria-pressed={weekOffset === 1} className={`min-h-9 rounded-lg px-3 text-xs ${weekOffset === 1 ? "bg-white/[0.12] text-white" : "text-white/45"}`}>Vorwoche</button>
+                      </> : <>
+                        <button type="button" onClick={() => setSeasonOffset(0)} aria-pressed={seasonOffset === 0} className={`min-h-9 rounded-lg px-3 text-xs ${seasonOffset === 0 ? "bg-white/[0.12] text-white" : "text-white/45"}`}>Aktuelle Saison</button>
+                        <button type="button" onClick={() => setSeasonOffset(1)} aria-pressed={seasonOffset === 1} className={`min-h-9 rounded-lg px-3 text-xs ${seasonOffset === 1 ? "bg-white/[0.12] text-white" : "text-white/45"}`}>Vorige Saison</button>
+                      </>}
+                    </div>
+                  </div>
+
+                  {leaderboardMode === "week" && weeklyChallenge && <section className="mt-4 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4" aria-label="Gemeinsames Crew-Wochenziel">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">Gemeinsames Crew-Ziel</p><h3 className="mt-1 text-sm font-semibold">2 qualifizierte Trainingstage pro Mitglied</h3></div>
+                      {weeklyChallenge.completed && <span className="rounded-full border border-white/15 bg-white/[0.08] px-2.5 py-1 text-[10px] font-semibold text-white/75">Crewziel geschafft · Abzeichen</span>}
+                    </div>
+                    <p className="mt-2 text-xs text-white/48">{weeklyChallenge.active_members === 0 ? "Noch keine aktiven Mitglieder." : `${weeklyChallenge.members_at_goal} von ${weeklyChallenge.active_members} Mitgliedern haben ihr Teilziel erreicht.`} Das Abzeichen bringt keine zusätzlichen Einzelpunkte.</p>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.08]" role="progressbar" aria-label="Fortschritt des Crew-Ziels" aria-valuemin={0} aria-valuemax={100} aria-valuenow={weeklyChallenge.progress_percent}>
+                      <div className="h-full rounded-full bg-white/65 transition-[width] duration-300" style={{ width: `${weeklyChallenge.progress_percent}%` }} />
+                    </div>
+                  </section>}
+
+                  {tabLoading ? <p className="py-8 text-center text-sm text-white/42" aria-live="polite">Rangliste wird berechnet …</p> : (leaderboardMode === "week" ? leaderboard : seasonLeaderboard).length === 0 ? <div className="py-8 text-center"><p className="text-sm text-white/55">Noch keine Mitglieder in der Rangliste.</p><Link href="/training" className="mt-3 inline-flex text-xs underline underline-offset-4">Training protokollieren</Link></div> : <ol className="mt-4 space-y-2">
+                    {(leaderboardMode === "week" ? leaderboard : seasonLeaderboard).map((row) => <li key={row.user_id} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-3 py-3">
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.045] text-sm font-semibold tabular-nums text-white/72">{row.rank}</span>
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/[0.08] text-xs font-semibold text-white/72" aria-hidden="true">{row.display_name.slice(0, 1).toLocaleUpperCase("de-DE")}</span>
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">{row.display_name}{row.user_id === userId && <span className="ml-2 text-[10px] text-white/35">Du</span>}</span>
-                      <span className="text-right"><span className="block text-sm font-semibold tabular-nums">{row.points} {row.points === 1 ? "Punkt" : "Punkte"}</span><span className="block text-[10px] text-white/38">{row.workout_days} Trainingstage</span></span>
+                      <span className="text-right"><span className="block text-sm font-semibold tabular-nums">{row.points} {row.points === 1 ? "Punkt" : "Punkte"}</span><span className="block text-[10px] text-white/38">{leaderboardMode === "week" ? `${row.workout_days} Trainingstage` : `${"weeks_counted" in row ? row.weeks_counted : 0} gewertete Wochen`}</span></span>
                     </li>)}
                   </ol>}
                 </section>
