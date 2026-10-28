@@ -24,6 +24,7 @@ type CloudDraft = { client_session_id: string; revision: number; payload: Workou
 
 type SyncState = "pending" | "syncing" | "synced" | "offline" | "error" | "conflict";
 const LEGACY_DRAFT_PREFIX = "gym-battle:workout-draft:";
+const QUEUED_EXERCISE_KEY = "gym-battle:library-exercise";
 
 function parseDecimal(value: string) {
   const trimmed = value.trim().replace(/\s/g, "");
@@ -244,6 +245,27 @@ export default function TrainingPage() {
       if (!selectedPayload) {
         selectedSessionId = crypto.randomUUID();
         selectedPayload = { name: "Mein Training", startedAt: new Date().toISOString(), exercises: [] };
+      }
+      const queuedExercise = window.sessionStorage.getItem(QUEUED_EXERCISE_KEY);
+      if (queuedExercise) {
+        try {
+          const pick = JSON.parse(queuedExercise) as { name?: unknown; createdAt?: unknown };
+          const pickName = typeof pick.name === "string" ? pick.name.trim().slice(0, 100) : "";
+          const createdAt = Number(pick.createdAt);
+          if (pickName && Number.isFinite(createdAt) && Date.now() - createdAt >= 0 && Date.now() - createdAt < 30 * 60 * 1000) {
+            const alreadyAdded = selectedPayload.exercises.some((exercise) => exercise.name.trim().toLocaleLowerCase("de-DE") === pickName.toLocaleLowerCase("de-DE"));
+            if (!alreadyAdded) {
+              selectedPayload = { ...selectedPayload, exercises: [...selectedPayload.exercises, { exerciseId: null, name: pickName, sets: [{ weight: "", reps: "" }] }] };
+              setMessage(`„${pickName}“ aus der Übungsbibliothek wurde zum Training hinzugefügt.`);
+            } else {
+              setMessage(`„${pickName}“ ist bereits in diesem Training enthalten.`);
+            }
+          }
+        } catch {
+          setMessage("Die ausgewählte Bibliotheksübung konnte nicht übernommen werden.");
+        } finally {
+          window.sessionStorage.removeItem(QUEUED_EXERCISE_KEY);
+        }
       }
       const restored = toEditorState(selectedPayload);
       setClientSessionId(selectedSessionId);
@@ -709,7 +731,10 @@ export default function TrainingPage() {
           <section className="glass-panel mt-4 rounded-[22px] p-5 sm:p-6">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
               <div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">Übungsbibliothek</p><h2 className="mt-1 text-lg font-semibold">Was steht heute an?</h2></div>
-              <span className="rounded-full border border-white/[0.09] bg-white/[0.035] px-3 py-1.5 text-[10px] text-white/48">{savedExercises.length} gespeichert</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-white/[0.09] bg-white/[0.035] px-3 py-1.5 text-[10px] text-white/48">{savedExercises.length} gespeichert</span>
+                <button type="button" disabled={queuedCompletion} onClick={() => router.push("/library")} className="secondary-button min-h-10 px-3 text-xs disabled:opacity-45">50 animierte Übungen ansehen</button>
+              </div>
             </div>
             {savedExercises.length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
               <div className="flex min-w-0 gap-2">

@@ -3,12 +3,13 @@
 ## Umgesetzt
 
 - [x] **Private Gruppen und Mitgliedschaften:** private Erstellung, Gruppenzeitzone, Owner/Admin/Member-Rollen, gruppenbezogene Mitgliederliste, kontrollierte Owner-Übergabe, Austritt und bestätigte Archivierung. Keine globale Profilsuche, öffentlichen Profile oder E-Mail-Suche.
-- [x] **Einladungen:** Einmal-Link, sieben Tage gültig, widerrufbar, nur Token-Hash in der Datenbank; minimierte Vorschau und authentifizierter, atomarer Beitritt. Owner/Admin können Einladungen verwalten.
-- [x] **Opt-in Feed:** Training bleibt privat, bis beim Abschluss explizit eine Gruppe ausgewählt wird. Nur Mitglieder der Gruppe sehen freigegebene Details; Besitzer können privat schalten. Kommentare und Reaktionen sind gruppenbeschränkt.
-- [x] **Wochenrangliste:** gruppenlokale Woche/Zeitzone, geteilter abgeschlossener Trainingstag zählt maximal einmal, maximal fünf Punkte pro Woche, Gleichstand teilt Rang. Private Einheiten, Trainingsvolumen und Körperdaten fließen nicht ein.
-- [x] **Cloud-Autosave und atomarer Abschluss:** versionierte Drafts, sichtbarer Syncstatus, Idempotenz, Abschluss samt Sätzen und optionaler Gruppenfreigabe in einer Transaktion. Konflikte überschreiben nichts still.
-- [x] **Offline-Logging und Synchronisierung:** lokales IndexedDB-Logging, Outbox und automatische Wiederholung bei Netzwiederkehr. Nutzer entscheidet bei Konflikt; auch wenn der Cloud-Draft verschwunden ist, kann lokal als neuer Cloud-Draft gespeichert werden. Funktioniert nach dem Öffnen der App; PWA-Erststart ohne Netz ist nicht enthalten.
-- [x] **Prüfungen:** ESLint, TypeScript, Next-Produktionsbuild und reproduzierbarer PGlite-Datenbanktest mit getrennten Nutzeridentitäten. Testskript: `supabase/tests/community-migration.test.mjs`; Ausführung mit `npm run test:community-db`.
+- [x] **Einladungen:** Einmal-Link, sieben Tage gültig, widerrufbar, nur Token-Hash in der Datenbank; minimierte Vorschau und authentifizierter, atomarer Beitritt. Owner/Admin können Einladungen erstellen und verwalten.
+- [x] **Opt-in Feed:** Training bleibt privat, bis beim Abschluss explizit eine Gruppe freigegeben wird. Nur Gruppenmitglieder sehen freigegebene Details; Besitzer können die Freigabe zurückziehen. Kommentare und Reaktionen sind gruppenbeschränkt.
+- [x] **Wochenrangliste:** gruppenlokale Woche, geteilte Trainingstage zählen maximal einmal täglich und höchstens fünf Punkte pro Woche. Gleichstand teilt Rang; Trainingsvolumen und Körperdaten zählen nicht.
+- [x] **Cloud-Autosave und atomarer Abschluss:** versionierte Drafts, sichtbarer Syncstatus, Idempotenz, atomarer Abschluss samt Sätzen und optionaler Freigabe; Konflikte überschreiben nichts still.
+- [x] **Offline-Sync:** IndexedDB-Outbox und automatische Wiederholung bei Netzwiederkehr. Konflikte erfordern eine bewusste Auswahl; lokaler Entwurf kann notfalls als neuer Cloud-Draft gespeichert werden. PWA-Erststart ohne Netz ist nicht enthalten.
+- [x] **Animierte Übungsbibliothek:** genau 50 Übungen (25 Kurzhantel, 25 Kabelturm) mit loopenden Vektor-Demos, Geräteanzeige, kurzen Technikhinweisen, häufigen Fehlern und Namen-/Synonym-/Muskelgruppen-/Gerätesuche. Detailansicht mit direkter Übernahme in den laufenden Trainingsentwurf; mobil nutzbar, Kartenanimationen starten erst im sichtbaren Bereich und beachten „Bewegung reduzieren“. Es sind schematische SVG-Loops, keine gefilmten Videos.
+- [x] **Qualitätsprüfungen:** ESLint, TypeScript, Produktionsbuild mit Platzhalter-Supabase-Werten, `git diff --check` und Datenbanktest `npm run test:community-db` erfolgreich.
 
 ## Noch vor Produktivbetrieb erforderlich
 

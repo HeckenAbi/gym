@@ -28,3 +28,11 @@ RLS ist die Sicherheitsgrenze. Gruppen- und Sync-Tabellen sind nicht für direkt
 Die Migration wurde **nicht** auf einem unbekannten oder produktiven Supabase-Projekt ausgeführt. Vor Deployment müssen die tatsächlichen Basistabellen/-spalten und vorhandenen Policies des Zielprojekts gegen die Migration geprüft und der Ablauf auf einer isolierten Supabase-Staging-Instanz mit getrennten Nutzern getestet werden. Der PGlite-Smoke-Test simuliert Auth über `auth.uid()`; er ersetzt keine Prüfung von Supabase Auth, PostgREST oder Konfiguration des konkreten Projekts.
 
 Offline-Synchronisierung funktioniert für die bereits geöffnete App mit lokal verfügbaren Browserressourcen; PWA-Installation und Erststart ohne Netzwerk wurden nicht als Bestandteil dieser Lieferung umgesetzt.
+
+## Animierte Übungsbibliothek
+
+Die Bibliothek enthält genau 50 Übungen: 25 Kurzhantel- und 25 Kabelturm-Übungen. Jede Übung hat eine leichtgewichtige SVG-Bewegungsillustration, Gerät/Muskelgruppe, deutsche und gebräuchliche alternative Suchbegriffe sowie konkrete Hinweise zu Ausführung und typischen Fehlern. Nutzer können nach Name, Synonym, Muskelgruppe oder Gerät filtern, die Animation in einer Detailansicht ansehen und die Übung direkt zum Trainingsentwurf hinzufügen.
+
+Die Animationen sind Vektor-Loops statt 50 eingebettete Videodateien, damit sie auf Mobilgeräten zügig laden und sich skalieren lassen. Vorschauanimationen starten nur im sichtbaren Bereich; reduzierte Bewegung wird respektiert. Die Illustrationen erklären schematisch die Bewegung und sind keine gefilmte oder medizinisch individualisierte Bewegungsanalyse. ESLint, TypeScript, der Produktionsbuild und der Community-Datenbank-Smoke-Test liefen erfolgreich.
+
+Hauptdateien: `src/data/exercise-library.ts` (50 katalogisierte Übungen und Technik-Cues), `src/components/ExerciseAnimation.tsx` (wiederverwendbare, gerätebewusste Animation), `app/library/page.tsx` (responsive Suche, Filter und Detailansicht), `app/training/page.tsx` (Übung aus der Bibliothek in die aktuelle Einheit übernehmen) sowie `public/manus-routes.json`.
