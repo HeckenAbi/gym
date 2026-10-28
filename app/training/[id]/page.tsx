@@ -2,8 +2,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../src/lib/supabase";
+import { AppShell } from "../../../src/components/AppShell";
 
 type Workout = {
   id: string;
@@ -28,7 +30,7 @@ type ExerciseEntry = {
   sets: SetEntry[];
 };
 
-export default function WorkoutDetails() {
+function WorkoutDetailsContent() {
   const params = useParams();
   const router = useRouter();
   const workoutId = params.id as string;
@@ -99,7 +101,7 @@ export default function WorkoutDetails() {
       }[] = [];
 
       if (exerciseIds.length > 0) {
-        const { data: setData, error: setError } = await supabase
+        const { data: setData, error: setQueryError } = await supabase
           .from("workout_sets")
           .select("id, set_number, weight, reps, workout_exercise_id")
           .in("workout_exercise_id", exerciseIds)
@@ -107,8 +109,8 @@ export default function WorkoutDetails() {
 
         if (!active) return;
 
-        if (setError) {
-          setError("Sätze konnten nicht geladen werden: " + setError.message);
+        if (setQueryError) {
+          setError("Sätze konnten nicht geladen werden: " + setQueryError.message);
           setLoading(false);
           return;
         }
@@ -486,15 +488,13 @@ export default function WorkoutDetails() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#090b10] p-8 text-white">
-        Lade Trainingsdetails ...
-      </main>
+      <AppShell><main className="min-h-screen bg-[#090a0c] p-8 text-white" aria-live="polite">Trainingsdetails werden geladen …</main></AppShell>
     );
   }
 
   if (error || !workout) {
     return (
-      <main className="min-h-screen bg-[#090b10] p-8 text-white">
+      <AppShell><main className="min-h-screen bg-[#090a0c] p-8 text-white">
         <p className="text-red-300">{error || "Training nicht gefunden."}</p>
         <button
           onClick={() => router.push("/dashboard")}
@@ -502,17 +502,16 @@ export default function WorkoutDetails() {
         >
           Zurück zum Dashboard
         </button>
-      </main>
+      </main></AppShell>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#090b10] p-6 text-white md:p-10">
+    <AppShell>
+    <main className="min-h-screen bg-[#090a0c] px-4 py-6 text-white sm:px-6 md:px-10">
       <div className="mx-auto max-w-4xl">
         <header className="flex items-center justify-between border-b border-white/10 pb-6">
-          <div className="text-xl font-black">
-            GYM<span className="text-lime-400">BATTLE</span>
-          </div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/40">Trainingsdetails</p>
           <button
             onClick={() => router.push("/dashboard")}
             className="rounded-xl border border-white/15 px-4 py-2 text-sm text-gray-300"
@@ -521,8 +520,8 @@ export default function WorkoutDetails() {
           </button>
         </header>
 
-        <section className="py-10">
-          <p className="text-sm font-bold uppercase tracking-widest text-lime-400">
+        <section className="py-8 sm:py-10">
+          <p className="text-sm font-bold uppercase tracking-widest text-white/45">
             Trainingsdetails
           </p>
 
@@ -532,7 +531,7 @@ export default function WorkoutDetails() {
               <input
                 value={workoutName}
                 onChange={(e) => setWorkoutName(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-white outline-none focus:border-lime-400"
+                className="mt-2 w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-white outline-none focus:border-white/70"
               />
             </label>
           ) : (
@@ -545,7 +544,7 @@ export default function WorkoutDetails() {
 
           <p className="mt-2 text-sm">
             {workout.finished_at ? (
-              <span className="text-lime-400">Abgeschlossen</span>
+              <span className="text-white/75">Abgeschlossen</span>
             ) : (
               <span className="text-yellow-300">
                 Gespeichert, nicht abgeschlossen
@@ -561,7 +560,7 @@ export default function WorkoutDetails() {
                   setMessage("");
                   setEditing(true);
                 }}
-                className="rounded-xl bg-lime-400 px-5 py-3 font-bold text-black"
+                className="rounded-xl bg-[#d1d2d6] px-5 py-3 font-bold text-black"
               >
                 Training bearbeiten
               </button>
@@ -570,7 +569,7 @@ export default function WorkoutDetails() {
                 <button
                   onClick={() => void saveChanges()}
                   disabled={saving}
-                  className="rounded-xl bg-lime-400 px-5 py-3 font-bold text-black disabled:opacity-50"
+                  className="rounded-xl bg-[#d1d2d6] px-5 py-3 font-bold text-black disabled:opacity-50"
                 >
                   {saving ? "Speichert ..." : "Änderungen speichern"}
                 </button>
@@ -608,19 +607,19 @@ export default function WorkoutDetails() {
             <input
               value={newExerciseName}
               onChange={(e) => setNewExerciseName(e.target.value)}
-              className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-4 py-3 outline-none focus:border-lime-400"
+              className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-4 py-3 outline-none focus:border-white/70"
               placeholder="Neue Übung hinzufügen"
             />
             <button
               type="submit"
-              className="rounded-xl border border-lime-400/50 px-4 py-3 font-bold text-lime-400"
+              className="rounded-xl border border-white/30 px-4 py-3 font-bold text-white/75"
             >
               + Übung
             </button>
           </form>
         )}
 
-        <section className="space-y-4">
+        <section className="space-y-3">
           {exercises.length === 0 ? (
             <p className="rounded-xl border border-white/10 p-5 text-gray-400">
               Für dieses Training wurden keine Übungen gespeichert.
@@ -629,7 +628,7 @@ export default function WorkoutDetails() {
             exercises.map((exercise, index) => (
               <article
                 key={exercise.id}
-                className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
+                className="glass-panel rounded-2xl p-4 sm:p-5"
               >
                 <div className="mb-4 flex items-center justify-between gap-3">
                   {editing ? (
@@ -736,7 +735,7 @@ export default function WorkoutDetails() {
                   <button
                     type="button"
                     onClick={() => addSet(exercise.id)}
-                    className="mt-3 text-sm font-semibold text-lime-400"
+                    className="mt-3 text-sm font-semibold text-white/75"
                   >
                     + Satz hinzufügen
                   </button>
@@ -747,11 +746,20 @@ export default function WorkoutDetails() {
         </section>
 
         {message && (
-          <p aria-live="polite" className="mt-5 break-words text-sm text-lime-300">
+          <p aria-live="polite" className="mt-5 break-words text-sm text-white/75">
             {message}
           </p>
         )}
       </div>
     </main>
+    </AppShell>
+  );
+}
+
+export default function WorkoutDetails() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-[#090a0c] p-8 text-white">Trainingsdetails werden geladen …</main>}>
+      <WorkoutDetailsContent />
+    </Suspense>
   );
 }

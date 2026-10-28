@@ -1,0 +1,1 @@
+{"routes":[{"path":"/","title":"Gym Battle"},{"path":"/dashboard","title":"Übersicht"},{"path":"/training","title":"Training"},{"path":"/training/:id","title":"Trainingsdetails"},{"path":"/auth/reset-password","title":"Passwort zurücksetzen"}]}

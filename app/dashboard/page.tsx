@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../src/lib/supabase";
+import { AppShell } from "../../src/components/AppShell";
 
 type SetData = {
   weight: number | null;
@@ -33,11 +34,14 @@ function getWeekKey(date: Date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return d.toISOString().slice(0, 10);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
-function getLastWeeks(count: number) {
-  const now = new Date();
+function getLastWeeks(count: number, referenceDate: Date) {
+  const now = new Date(referenceDate);
   const monday = new Date(now);
   monday.setHours(0, 0, 0, 0);
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
@@ -76,7 +80,7 @@ function BarChart({
             <span className="text-xs text-gray-400">{value || ""}</span>
             <div className="flex h-full w-full items-end">
               <div
-                className="w-full rounded-t-lg bg-lime-400 transition-all duration-500"
+                className="w-full rounded-t-lg bg-[#d1d2d6] transition-all duration-500"
                 style={{
                   height: `${Math.max((value / max) * 100, value ? 5 : 0)}%`,
                   minHeight: value ? "5px" : "0",
@@ -147,11 +151,11 @@ function LineChart({
           );
         })}
 
-        <path d={area} fill="rgba(163,230,53,0.10)" />
+        <path d={area} fill="rgba(255,255,255,0.08)" />
         <path
           d={path}
           fill="none"
-          stroke="#a3e635"
+          stroke="#d1d2d6"
           strokeWidth="3"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -163,8 +167,8 @@ function LineChart({
             cx={point.x}
             cy={point.y}
             r="4"
-            fill="#a3e635"
-            stroke="#090b10"
+            fill="#d1d2d6"
+            stroke="#090a0c"
             strokeWidth="2"
           />
         ))}
@@ -184,8 +188,15 @@ export default function Dashboard() {
   const [email, setEmail] = useState("");
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
+  const [referenceDate, setReferenceDate] = useState<Date | null>(null);
   const [error, setError] = useState("");
   const [selectedExercise, setSelectedExercise] = useState("");
+  const [workoutQuery, setWorkoutQuery] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setReferenceDate(new Date()), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -223,7 +234,7 @@ export default function Dashboard() {
       if (!active) return;
 
       if (queryError) {
-        setError("Trainings konnten nicht geladen werden: " + queryError.message);
+        setError("Deine Trainings konnten gerade nicht geladen werden. Bitte versuche es erneut.");
       } else {
         setWorkouts((data ?? []) as unknown as Workout[]);
       }
@@ -257,7 +268,8 @@ export default function Dashboard() {
   }
 
   const stats = useMemo(() => {
-    const weeks = getLastWeeks(8);
+    const completedWorkouts = workouts.filter((workout) => workout.finished_at);
+    const weeks = referenceDate ? getLastWeeks(8, referenceDate) : [];
     const weekCounts = new Map(weeks.map((week) => [week.key, 0]));
     const weekVolume = new Map(weeks.map((week) => [week.key, 0]));
 
@@ -267,7 +279,7 @@ export default function Dashboard() {
     let bestWeight = 0;
     let bestExercise = "Noch keine Daten";
 
-    for (const workout of workouts) {
+    for (const workout of completedWorkouts) {
       const weekKey = getWeekKey(new Date(workout.started_at));
 
       if (weekCounts.has(weekKey)) {
@@ -303,6 +315,7 @@ export default function Dashboard() {
 
     return {
       weeks,
+      completedCount: completedWorkouts.length,
       weekCounts: weeks.map((week) => weekCounts.get(week.key) ?? 0),
       weekVolume: weeks.map((week) => weekVolume.get(week.key) ?? 0),
       totalVolume,
@@ -311,12 +324,22 @@ export default function Dashboard() {
       bestExercise,
       exerciseNames: Array.from(exercises).sort((a, b) => a.localeCompare(b)),
     };
-  }, [workouts]);
+  }, [workouts, referenceDate]);
+
+  const visibleWorkouts = useMemo(() => {
+    const query = workoutQuery.trim().toLocaleLowerCase("de-DE");
+    if (!query) return workouts;
+    return workouts.filter((workout) =>
+      workout.name.toLocaleLowerCase("de-DE").includes(query) ||
+      new Date(workout.started_at).toLocaleDateString("de-DE").includes(query)
+    );
+  }, [workouts, workoutQuery]);
 
   const strengthProgress = useMemo(() => {
     if (!selectedExercise) return [];
 
     return workouts
+      .filter((workout) => workout.finished_at)
       .filter((workout) =>
         workout.workout_exercises?.some(
           (exercise) => exercise.exercise_name === selectedExercise
@@ -349,22 +372,24 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#090b10] p-8 text-white">
-        Dashboard wird geladen ...
-      </main>
+      <AppShell>
+        <main className="min-h-screen bg-[#090a0c] p-8 text-white" aria-live="polite">
+          <div className="mx-auto max-w-7xl animate-pulse space-y-4">
+            <div className="h-8 w-56 rounded-lg bg-white/[0.08]" />
+            <div className="h-24 rounded-2xl bg-white/[0.04]" />
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((item) => <div key={item} className="h-32 rounded-2xl bg-white/[0.04]" />)}</div>
+          </div>
+        </main>
+      </AppShell>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#090b10] px-4 py-6 text-white sm:px-6 md:px-10">
+    <AppShell>
+    <main className="min-h-screen bg-[#090a0c] px-4 py-6 text-white sm:px-6 md:px-10">
       <div className="mx-auto max-w-7xl">
         <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-6">
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="text-xl font-black tracking-tight"
-          >
-            GYM<span className="text-lime-400">BATTLE</span>
-          </button>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/40">Dein Trainingsraum</p>
 
           <div className="flex items-center gap-3">
             <span className="hidden text-sm text-gray-400 sm:block">{email}</span>
@@ -379,7 +404,7 @@ export default function Dashboard() {
 
         <section className="flex flex-col justify-between gap-6 py-10 md:flex-row md:items-end md:py-12">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-lime-400">
+            <p className="text-xs font-bold uppercase tracking-[0.25em] text-white/50">
               Dein persönlicher Bereich
             </p>
             <h1 className="mt-3 text-4xl font-black tracking-tight sm:text-5xl">
@@ -393,32 +418,32 @@ export default function Dashboard() {
 
           <button
             onClick={() => router.push("/training")}
-            className="rounded-xl bg-lime-400 px-6 py-3 font-bold text-black transition hover:bg-lime-300"
+            className="primary-button px-6 py-3"
           >
             + Training starten
           </button>
         </section>
 
         {error && (
-          <p className="mb-5 break-words rounded-xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-300">
+          <p role="alert" className="mb-5 break-words rounded-xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">
             {error}
           </p>
         )}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5">
+          <article className="glass-panel rounded-2xl p-5">
             <p className="text-sm text-gray-400">Trainings gesamt</p>
-            <p className="mt-3 text-3xl font-black">{workouts.length}</p>
-            <p className="mt-2 text-xs text-gray-500">Gespeicherte Einheiten</p>
+            <p className="mt-3 text-3xl font-black">{stats.completedCount}</p>
+            <p className="mt-2 text-xs text-gray-500">Abgeschlossene Einheiten</p>
           </article>
 
-          <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5">
+          <article className="glass-panel rounded-2xl p-5">
             <p className="text-sm text-gray-400">Trainingssätze</p>
             <p className="mt-3 text-3xl font-black">{stats.totalSets}</p>
             <p className="mt-2 text-xs text-gray-500">Über alle gespeicherten Trainings</p>
           </article>
 
-          <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5">
+          <article className="glass-panel rounded-2xl p-5">
             <p className="text-sm text-gray-400">Trainingsvolumen</p>
             <p className="mt-3 text-3xl font-black">
               {formatNumber(stats.totalVolume)} <span className="text-base text-gray-400">kg</span>
@@ -426,9 +451,9 @@ export default function Dashboard() {
             <p className="mt-2 text-xs text-gray-500">Gewicht × Wiederholungen</p>
           </article>
 
-          <article className="rounded-2xl border border-lime-400/20 bg-lime-400/[0.06] p-5">
+          <article className="glass-panel rounded-2xl p-5">
             <p className="text-sm text-gray-400">Höchstes Gewicht</p>
-            <p className="mt-3 text-3xl font-black text-lime-400">
+            <p className="mt-3 text-3xl font-black text-white">
               {formatNumber(stats.bestWeight)} <span className="text-base">kg</span>
             </p>
             <p className="mt-2 truncate text-xs text-gray-400">{stats.bestExercise}</p>
@@ -436,13 +461,13 @@ export default function Dashboard() {
         </section>
 
         <section className="mt-8 grid gap-5 lg:grid-cols-2">
-          <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6">
+          <article className="glass-panel rounded-2xl p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-bold">Trainingshäufigkeit</h2>
                 <p className="mt-1 text-sm text-gray-400">Deine letzten 8 Wochen</p>
               </div>
-              <span className="rounded-lg bg-lime-400/10 px-3 py-1 text-xs font-semibold text-lime-400">
+              <span className="rounded-lg bg-white/10 px-3 py-1 text-xs font-semibold text-white/75">
                 Pro Woche
               </span>
             </div>
@@ -453,7 +478,7 @@ export default function Dashboard() {
             />
           </article>
 
-          <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6">
+          <article className="glass-panel rounded-2xl p-5 sm:p-6">
             <div>
               <h2 className="text-lg font-bold">Trainingsvolumen</h2>
               <p className="mt-1 text-sm text-gray-400">
@@ -474,7 +499,7 @@ export default function Dashboard() {
           </article>
         </section>
 
-        <section className="mt-5 rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6">
+        <section className="glass-panel mt-5 rounded-2xl p-5 sm:p-6">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
               <h2 className="text-lg font-bold">Kraftentwicklung</h2>
@@ -486,7 +511,7 @@ export default function Dashboard() {
             <select
               value={selectedExercise}
               onChange={(event) => setSelectedExercise(event.target.value)}
-              className="rounded-xl border border-white/10 bg-[#090b10] px-4 py-3 text-sm text-white outline-none focus:border-lime-400"
+              className="rounded-xl border border-white/10 bg-[#090a0c] px-4 py-3 text-sm text-white outline-none focus:border-white/70"
             >
               <option value="">Übung auswählen</option>
               {stats.exerciseNames.map((name) => (
@@ -508,7 +533,7 @@ export default function Dashboard() {
           ) : (
             <>
               <div className="mt-6 flex items-baseline gap-2">
-                <span className="text-3xl font-black text-lime-400">
+                <span className="text-3xl font-black text-white/75">
                   {formatNumber(strengthProgress[strengthProgress.length - 1].weight)} kg
                 </span>
                 <span className="text-sm text-gray-400">letzter erfasster Wert</span>
@@ -522,23 +547,26 @@ export default function Dashboard() {
         </section>
 
         <section className="mt-8">
-          <div className="mb-5 flex items-center justify-between">
+          <div id="verlauf" className="mb-5 flex flex-col gap-3 scroll-mt-8 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-bold">Deine Trainings</h2>
-            <span className="text-sm text-gray-400">
-              {workouts.length} insgesamt
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-400">{workouts.length} insgesamt</span>
+              <input type="search" value={workoutQuery} onChange={(event) => setWorkoutQuery(event.target.value)} placeholder="Verlauf suchen" aria-label="Trainingsverlauf durchsuchen" className="app-input min-h-10 w-full px-3 text-sm sm:w-48" />
+            </div>
           </div>
 
           {workouts.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-[#11141c] p-8 text-center">
+            <div className="glass-panel rounded-2xl p-8 text-center">
               <h3 className="text-lg font-bold">Noch keine Trainings</h3>
               <p className="mt-2 text-gray-400">
                 Starte dein erstes Training und speichere deine Sätze.
               </p>
             </div>
+          ) : visibleWorkouts.length === 0 ? (
+            <div className="glass-panel rounded-2xl p-7 text-center text-sm text-white/55">Keine Trainings für „{workoutQuery}“ gefunden.</div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
-              {workouts.map((workout) => (
+              {visibleWorkouts.map((workout) => (
                 <article
                   key={workout.id}
                   onClick={() => router.push(`/training/${workout.id}`)}
@@ -550,12 +578,12 @@ export default function Dashboard() {
                   }}
                   role="link"
                   tabIndex={0}
-                  className="cursor-pointer rounded-2xl border border-white/10 bg-[#11141c] p-5 transition hover:border-lime-400/40 focus:outline-none focus:ring-2 focus:ring-lime-400"
+                  className="glass-panel cursor-pointer rounded-2xl p-5 transition hover:border-white/25 focus:outline-none focus:ring-2 focus:ring-white/70"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <h3 className="text-lg font-bold">{workout.name}</h3>
                     <span className="rounded-lg bg-white/5 px-2 py-1 text-xs text-gray-400">
-                      {(workout.workout_exercises ?? []).length} Übungen
+                      {workout.finished_at ? "Abgeschlossen" : "Entwurf"}
                     </span>
                   </div>
 
@@ -566,7 +594,7 @@ export default function Dashboard() {
                     })}
                   </p>
 
-                  <p className="mt-4 text-sm font-semibold text-lime-400">
+                  <p className="mt-4 text-sm font-semibold text-white/75">
                     Training ansehen →
                   </p>
                 </article>
@@ -575,37 +603,19 @@ export default function Dashboard() {
           )}
         </section>
 
-        <section className="mt-8 grid gap-4 md:grid-cols-2">
-          <button
-            onClick={() => router.push("/groups")}
-            className="rounded-2xl border border-white/10 bg-[#11141c] p-6 text-left transition hover:border-lime-400/40"
-          >
-            <p className="text-xs font-bold uppercase tracking-widest text-lime-400">
-              Gemeinsam stärker
-            </p>
-            <h2 className="mt-3 text-xl font-bold">Meine Gruppen</h2>
-            <p className="mt-2 text-sm text-gray-400">
-              Erstelle eine Crew und trainiere gemeinsam mit Freunden.
-            </p>
-            <p className="mt-5 text-sm font-semibold text-lime-400">
-              Gruppen öffnen →
-            </p>
-          </button>
+        <section id="konto" className="mt-8 grid scroll-mt-8 gap-4 md:grid-cols-2">
+          <article className="glass-panel rounded-2xl p-6">
+            <p className="text-xs font-bold uppercase tracking-widest text-white/45">Konto</p>
+            <h2 className="mt-3 text-xl font-bold">Privat trainieren.</h2>
+            <p className="mt-2 break-all text-sm text-gray-400">Angemeldet als {email || "dein Konto"}</p>
+            <button onClick={logout} className="secondary-button mt-5 px-4 py-2 text-sm">Abmelden</button>
+          </article>
 
-          <article className="rounded-2xl border border-white/10 bg-[#11141c] p-6">
-            <p className="text-xs font-bold uppercase tracking-widest text-lime-400">
-              Dein nächstes Ziel
-            </p>
-            <h2 className="mt-3 text-xl font-bold">Bleib konstant</h2>
-            <p className="mt-2 text-sm text-gray-400">
-              Regelmäßige Trainings machen deinen Fortschritt sichtbar.
-            </p>
-            <button
-              onClick={() => router.push("/training")}
-              className="mt-5 text-sm font-semibold text-lime-400 hover:text-lime-300"
-            >
-              Training starten →
-            </button>
+          <article className="glass-soft rounded-2xl p-6">
+            <p className="text-xs font-bold uppercase tracking-widest text-white/45">Dein Fokus</p>
+            <h2 className="mt-3 text-xl font-bold">Konstanz schlägt Zufall.</h2>
+            <p className="mt-2 text-sm leading-6 text-gray-400">Jede gespeicherte Einheit macht deinen Verlauf aussagekräftiger. Deine Daten bleiben deinem Konto zugeordnet.</p>
+            <button onClick={() => router.push("/training")} className="mt-5 text-sm font-semibold text-white/75 hover:text-white">Training starten →</button>
           </article>
         </section>
 
@@ -614,5 +624,6 @@ export default function Dashboard() {
         </footer>
       </div>
     </main>
+    </AppShell>
   );
 }
