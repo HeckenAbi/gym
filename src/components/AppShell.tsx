@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
-type IconName = "home" | "dumbbell" | "chart" | "user";
+type IconName = "home" | "dumbbell" | "chart" | "user" | "users";
 
 function NavIcon({ name }: { name: IconName }) {
   const shared = {
@@ -27,14 +27,17 @@ function NavIcon({ name }: { name: IconName }) {
   if (name === "chart") {
     return <svg {...shared}><path d="M4 19V5m0 14h17" /><path d="m7 15 4-4 3 2 6-7" /><path d="M17 6h3v3" /></svg>;
   }
+  if (name === "users") {
+    return <svg {...shared}><circle cx="9" cy="8" r="3" /><path d="M3 20c.4-3.2 2.4-5 6-5s5.6 1.8 6 5" /><path d="M16 5.4a3 3 0 0 1 0 5.8M17 15c2.3.6 3.6 2.2 4 5" /></svg>;
+  }
   return <svg {...shared}><circle cx="12" cy="8" r="3.5" /><path d="M5 20c.5-3.5 3-5.5 7-5.5s6.5 2 7 5.5" /></svg>;
 }
 
-const items: { label: string; href: string; icon: IconName; match: "dashboard" | "training" | "history" | "account" }[] = [
+const items: { label: string; href: string; icon: IconName; match: "dashboard" | "training" | "history" | "groups" }[] = [
   { label: "Übersicht", href: "/dashboard", icon: "home", match: "dashboard" },
   { label: "Training", href: "/training", icon: "dumbbell", match: "training" },
   { label: "Verlauf", href: "/dashboard#verlauf", icon: "chart", match: "history" },
-  { label: "Konto", href: "/dashboard#konto", icon: "user", match: "account" },
+  { label: "Gruppen", href: "/groups", icon: "users", match: "groups" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -44,6 +47,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   function isActive(match: (typeof items)[number]["match"]) {
     if (match === "training") return isTraining;
     if (match === "dashboard") return pathname === "/dashboard";
+    if (match === "groups") return pathname.startsWith("/groups");
     return false;
   }
 

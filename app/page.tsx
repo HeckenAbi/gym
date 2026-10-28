@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../src/lib/supabase";
 
 type AuthMode = "login" | "signup" | "reset";
@@ -12,11 +12,29 @@ export default function Home() {
   const [showAuth, setShowAuth] = useState(false);
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
   const [messageKind, setMessageKind] = useState<"success" | "error">("success");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (new URLSearchParams(window.location.search).has("returnTo")) {
+        setMode("login");
+        setShowAuth(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  function safeReturnPath() {
+    const candidate = new URLSearchParams(window.location.search).get("returnTo");
+    return candidate?.startsWith("/") && !candidate.startsWith("//") && !candidate.includes("\\")
+      ? candidate
+      : "/dashboard";
+  }
 
   function openAuth(nextMode: AuthMode) {
     setMode(nextMode);
@@ -48,8 +66,16 @@ export default function Home() {
           setMessageKind("error");
           return;
         }
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { display_name: displayName.trim() } },
+        });
         if (error) throw error;
+        if (data.session) {
+          router.push(safeReturnPath());
+          return;
+        }
         setMessage("Konto angelegt. Prüfe dein Postfach, falls eine E-Mail-Bestätigung erforderlich ist.");
         setMessageKind("success");
         return;
@@ -57,7 +83,7 @@ export default function Home() {
 
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      router.push("/dashboard");
+      router.push(safeReturnPath());
     } catch {
       setMessage(
         mode === "login"
@@ -197,6 +223,9 @@ export default function Home() {
               <label className="block text-xs font-medium text-white/66">E-Mail-Adresse
                 <input className="app-input mt-2 w-full px-4 text-sm" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="du@beispiel.de" />
               </label>
+              {mode === "signup" && <label className="block text-xs font-medium text-white/66">Anzeigename für deine Gruppen <span className="text-white/35">(optional)</span>
+                <input className="app-input mt-2 w-full px-4 text-sm" type="text" maxLength={40} autoComplete="nickname" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="z. B. Alex" />
+              </label>}
               {mode !== "reset" && <label className="block text-xs font-medium text-white/66">Passwort
                 <input className="app-input mt-2 w-full px-4 text-sm" type="password" required minLength={8} autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mindestens 8 Zeichen" />
               </label>}

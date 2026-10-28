@@ -1,36 +1,30 @@
-# Gym Battle – Umsetzungsplan
+# Gym Battle – Lieferstatus und Betriebsgrenzen
 
-## Ausgangslage
+## Implementiert
 
-Das Repository enthält eine Next.js-App mit E-Mail/Passwort-Anmeldung, Trainingsanlage und -bearbeitung sowie einem Dashboard mit Trainings- und Kraftstatistiken. Vorhanden sind außerdem umfangreiche Produktkonzepte, aber kein versioniertes Datenbankschema bzw. keine Supabase-Migrationen. Der konkrete Supabase-Endpunkt und der Live-Schema-Stand sind in dieser Arbeitsumgebung nicht verfügbar. Neue Tabellen, Gruppen-/Freundesfunktionen und produktive Datenänderungen werden daher nicht vorgetäuscht oder auf einer unbekannten Datenbank ausgeführt.
+Die vorhandene Next.js-/Supabase-App wurde um eine versionierte Community- und Workout-Sync-Schicht erweitert. Die Datenbankänderung liegt in `supabase/migrations/20261028230000_community_and_workout_sync.sql`.
 
-## Ziel und Umfang
+- **Private Gruppen:** Gruppen mit Zeitzone, Owner/Admin/Member-Rollen und mitgliedschaftsgebundenem Zugriff. Owner können die Inhaberschaft übertragen oder die Gruppe mit bestätigter Aktion archivieren; Admins/Member können austreten.
+- **Einladungen:** zufällige Einmal-Tokens, in der Datenbank nur als SHA-256-Hash, sieben Tage gültig, widerrufbar, atomarer Join nach Authentifizierung. Die Vorschau vor dem Beitritt verrät keine Trainingsinhalte. Owner/Admin können Einladungen erstellen und verwalten.
+- **Feed und soziale Interaktion:** Trainings bleiben privat, sofern sie beim Abschluss nicht ausdrücklich für eine Gruppe freigegeben werden. Gruppenmitglieder sehen nur Beiträge ihrer Gruppe; Kommentare und Reaktionen sind ebenfalls mitgliedschaftsgebunden. Freigaben lassen sich zurückziehen.
+- **Rangliste:** Serverberechnung nach abgeschlossenen und explizit geteilten Trainings, Gruppe-Zeitzone und lokalem Kalendertag; höchstens fünf Punkte pro Woche, Gleichstand teilt den Rang. Volumen und Körperdaten sind keine Wertung.
+- **Cloud-Autosave und Abschluss:** revidierte Draft-RPCs, sichtbarer UI-Synczustand und atomarer/idempotenter Workout-Abschluss. Konflikte werden nicht still überschrieben.
+- **Offline-Sync:** IndexedDB-Outbox hält Trainingsdaten lokal und synchronisiert nach Netzwiederkehr. Bei Cloud-Konflikt wählt der Nutzer explizit die lokale oder Cloud-Version; wenn der Cloud-Draft nicht mehr existiert, kann die lokale Version als neuer Cloud-Draft gespeichert werden.
+- **Mobile Oberfläche:** Gruppenrouten sind in die vorhandene responsive App-Navigation eingebunden und behalten das bestehende Premium-Grau-/Milchglasdesign.
 
-Die vorhandenen, datenbankgestützten Abläufe werden auf den Kernstandard moderner Krafttraining-Apps gehoben: schnelle mobile Navigation, hochwertiger dunkler Grauton-/Schwarz-Look mit zurückhaltendem Milchglas, Wiederaufnahme eines lokal zwischengespeicherten Trainingsentwurfs, Anzeige der letzten Leistung pro Übung, Pausentimer, klarer Speicherzustand sowie besser lesbare Verlauf-/Fortschrittsdarstellung. Die bestehende Supabase-Tabellenstruktur und alle vorhandenen Datenzugriffe bleiben erhalten.
+## Sicherheits- und Datenschutzgrenzen
 
-Die aktuelle Implementierung deckt keine Gruppen, Ranglisten, Einladungen, Profileinstellungen, Routinen, Passwort-Zurücksetzen oder serverseitige Autospeicherung ab. Gruppen- und Freundesfunktionen sowie sichere Ranglisten benötigen zunächst eine versionierte Migration, bestätigte Tabellen-/RLS-Regeln und verfügbare Testzugänge. Diese Punkte werden anhand des Produktkonzepts und des Wettbewerbsvergleichs als nächste Ausbaustufe dokumentiert, statt sie mit unechten Beispieldaten als funktionsfähig auszugeben.
+RLS ist die Sicherheitsgrenze. Gruppen- und Sync-Tabellen sind nicht für direkte beliebige Client-Abfragen freigegeben; eng begrenzte `SECURITY DEFINER`-RPCs prüfen Authentifizierung, Eigentum und Mitgliedschaft. Alle Definer-Funktionen setzen einen festen `search_path`. Invite-Roh-Tokens werden nicht serverseitig gespeichert; E-Mail-Adressen werden nicht in Profile/Feed eingebaut. Gruppen sind nicht global auffindbar; es gibt keine öffentlichen Profile, öffentlichen Posts oder Direktnachrichten.
 
-## Design
+## Verifikation
 
-- **Bewegung:** Zurückhaltender Dark-Industrial-Premium-Look mit matter Oberfläche und transparenten Glasflächen.
-- **Prinzipien:** Klarer Trainingsfokus, hohe Lesbarkeit, wenige starke Akzente und mobile Bedienelemente mit ausreichend großen Touch-Flächen.
-- **Farben:** Anthrazit und Schwarz als Grundflächen; abgestufte Grautöne für Hierarchie; gebrochenes Platinweiß für Primäraktionen. Das bisher dominante Limettengrün wird stark reduziert.
-- **Layout:** Schmale Desktop-Seitenleiste und mobile Bottom-Navigation; Trainingseditoren bleiben einspaltig und vermeiden enge Tabellen auf kleinen Displays.
-- **Signatur:** Dezente Glasränder, zurückhaltende Lichtreflexe und kompakte Leistungskennzahlen.
-- **Interaktion:** Sofortige Rückmeldung für Speichern, Wiederherstellen, Timer und Fehler; Inhalte bleiben beim Verlassen als Browserentwurf erhalten.
-- **Typografie:** Vorhandene Geist-Familie; klare numerische Kennzahlen und ruhige Fließtexte.
-- **Marke:** „GYM BATTLE“ bleibt erhalten; die visuelle Signatur wird platinfarben statt neonfarben.
+- `npm run lint` – erfolgreich.
+- `npx tsc --noEmit` – erfolgreich.
+- `npm run build` mit nicht echten öffentlichen Supabase-Platzhalterwerten – erfolgreich.
+- `npm run test:community-db` – Migration wurde in einer isolierten PGlite-PostgreSQL-Instanz gegen ein minimales Gym-Basisschema ausgeführt; geprüft wurden Profil-Fallback, private Mitgliedschaft, Einmal-Einladung, Revisionen/Konfliktauflösung, atomarer Abschluss inkl. Dezimalkomma, Gruppenfeed, Kommentar/Reaktion, Rangliste, RLS-Isolation, Owner-Wechsel und Archivierung.
 
-## Implementierungsansatz und Struktur
+## Noch notwendiger Schritt vor Live-Betrieb
 
-- `app/layout.tsx`, `app/globals.css`: deutsche Metadaten, Design-Tokens, dunkle Basis und Premium-Glass-Komponenten.
-- `src/components/AppShell.tsx`: wiederverwendbare Desktop-Seitenleiste und mobile Bottom-Navigation.
-- `app/page.tsx`: polierte Produkt-Landingpage und robusterer Anmelde-/Registrierungsablauf inklusive Passwort-Reset.
-- `app/dashboard/page.tsx`: responsives Dashboard, abgeschlossene Trainingsstatistik, Verlauf, Fortschrittsanzeige und Kontobereich.
-- `app/training/page.tsx`: mobiler Trainingseditor, Browser-Entwurf/Wiederaufnahme, letzte Leistungswerte und Pausentimer.
-- `app/training/[id]/page.tsx`: responsivere Trainingsdetails und Bearbeitung.
-- `docs/competitive-review.md`: belegter Vergleich ausgewählter Trainings-Apps anhand offizieller Quellen/Screenshots sowie Lücken und priorisierte nächste Schritte.
+Die Migration wurde **nicht** auf einem unbekannten oder produktiven Supabase-Projekt ausgeführt. Vor Deployment müssen die tatsächlichen Basistabellen/-spalten und vorhandenen Policies des Zielprojekts gegen die Migration geprüft und der Ablauf auf einer isolierten Supabase-Staging-Instanz mit getrennten Nutzern getestet werden. Der PGlite-Smoke-Test simuliert Auth über `auth.uid()`; er ersetzt keine Prüfung von Supabase Auth, PostgREST oder Konfiguration des konkreten Projekts.
 
-## Grenzen und Schutz der Daten
-
-Es wird weder auf eine Supabase-Datenbank geschrieben noch eine Schemaänderung angewendet. Trainingsentwürfe liegen lokal im Browser und werden nach erfolgreicher serverseitiger Speicherung entfernt. Gruppen/Ranglisten und echte serverseitige Wiederaufnahme bleiben offen, bis eine überprüfbare Migration, RLS-Tests und ein testbares Supabase-Projekt vorliegen.
+Offline-Synchronisierung funktioniert für die bereits geöffnete App mit lokal verfügbaren Browserressourcen; PWA-Installation und Erststart ohne Netzwerk wurden nicht als Bestandteil dieser Lieferung umgesetzt.
