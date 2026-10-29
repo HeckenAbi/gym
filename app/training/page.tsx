@@ -15,6 +15,7 @@ type SavedExercise = {
   id: string;
   name: string;
 };
+type Group = { id: string; name: string };
 
 type ExerciseEntry = {
   id: string;
@@ -35,6 +36,8 @@ export default function TrainingPage() {
   const [savedExercises, setSavedExercises] = useState<SavedExercise[]>([]);
   const [exerciseName, setExerciseName] = useState("");
   const [selectedExerciseId, setSelectedExerciseId] = useState("");
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState("");
   const [clientSessionId, setClientSessionId] = useState("");
   const [draftRevision, setDraftRevision] = useState(0);
   const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -59,6 +62,8 @@ export default function TrainingPage() {
       } else {
         setSavedExercises(library ?? []);
       }
+      const { data: groupData } = await supabase.rpc("get_my_groups");
+      setGroups((groupData ?? []) as Group[]);
 
       const { data: draftData } = await supabase.rpc("get_my_workout_draft");
       const draft = draftData?.[0] as {
@@ -366,11 +371,17 @@ export default function TrainingPage() {
         if (setsError) throw setsError;
       }
 
-      setMessage(
-        finish
-          ? "Training gespeichert und abgeschlossen."
-          : "Training gespeichert."
-      );
+      let shareMessage = "";
+      if (finish && selectedGroupId) {
+        const { error: shareError } = await supabase.rpc("share_finished_workout", {
+          p_workout_id: workout.id,
+          p_group_id: selectedGroupId,
+        });
+        shareMessage = shareError
+          ? ` Training gespeichert, aber nicht geteilt: ${shareError.message}`
+          : " Mit deiner Crew geteilt.";
+      }
+      setMessage(finish ? `Training gespeichert und abgeschlossen.${shareMessage}` : "Training gespeichert.");
 
       if (finish) {
         await supabase.rpc("discard_my_workout_draft", { p_client_session_id: clientSessionId });
@@ -631,6 +642,14 @@ export default function TrainingPage() {
             {saving ? "Speichert ..." : "Training beenden"}
           </button>
         </div>
+        <section className="mt-5 rounded-2xl border border-lime-400/20 bg-lime-400/[0.06] p-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-lime-400">Beim Abschluss teilen</p>
+          <p className="mt-2 text-sm text-gray-400">Optional: Wähle eine Crew. Ohne Auswahl bleibt das Training privat.</p>
+          <select value={selectedGroupId} onChange={(event) => setSelectedGroupId(event.target.value)} className="mt-4 w-full rounded-xl border border-white/15 bg-[#11141c] px-4 py-3 text-white outline-none focus:border-lime-400">
+            <option value="">Privat lassen</option>
+            {groups.map((group) => <option key={group.id} value={group.id}>{group.name} teilen</option>)}
+          </select>
+        </section>
       </div>
     </main>
   );
