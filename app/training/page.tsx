@@ -35,6 +35,9 @@ export default function TrainingPage() {
   const [savedExercises, setSavedExercises] = useState<SavedExercise[]>([]);
   const [exerciseName, setExerciseName] = useState("");
   const [selectedExerciseId, setSelectedExerciseId] = useState("");
+  const [clientSessionId, setClientSessionId] = useState("");
+  const [draftRevision, setDraftRevision] = useState(0);
+  const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   useEffect(() => {
     async function initialize() {
@@ -57,11 +60,50 @@ export default function TrainingPage() {
         setSavedExercises(library ?? []);
       }
 
+      const { data: draftData } = await supabase.rpc("get_my_workout_draft");
+      const draft = draftData?.[0] as {
+        client_session_id: string;
+        revision: number;
+        payload: { workoutName?: string; exercises?: ExerciseEntry[] };
+      } | undefined;
+      if (draft?.payload?.exercises?.length) {
+        setClientSessionId(draft.client_session_id);
+        setDraftRevision(draft.revision);
+        setWorkoutName(draft.payload.workoutName || "Mein Training");
+        setExercises(draft.payload.exercises);
+        setMessage("Dein gespeicherter Entwurf wurde wiederhergestellt.");
+      } else {
+        setClientSessionId(crypto.randomUUID());
+      }
+
       setLoading(false);
     }
 
     initialize();
   }, [router]);
+
+  async function persistDraft() {
+    if (loading || saving || !clientSessionId || exercises.length === 0) return;
+    setAutosaveStatus("saving");
+    const { data, error } = await supabase.rpc("save_workout_draft", {
+      p_client_session_id: clientSessionId,
+      p_expected_revision: draftRevision,
+      p_payload: { workoutName, exercises },
+    });
+    if (error) setAutosaveStatus("error");
+    else {
+      setDraftRevision(Number(data ?? draftRevision + 1));
+      setAutosaveStatus("saved");
+    }
+  }
+
+  // persistDraft intentionally captures the latest draft values.
+  useEffect(() => {
+    if (loading || !clientSessionId || exercises.length === 0) return;
+    const timer = window.setTimeout(() => { void persistDraft(); }, 700);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workoutName, exercises, clientSessionId, loading]);
 
   function createWorkoutExercise(
     name: string,
@@ -331,6 +373,7 @@ export default function TrainingPage() {
       );
 
       if (finish) {
+        await supabase.rpc("discard_my_workout_draft", { p_client_session_id: clientSessionId });
         router.push("/dashboard");
       }
     } catch (error) {
@@ -373,6 +416,11 @@ export default function TrainingPage() {
         </p>
 
         <h1 className="mt-2 text-4xl font-black">Neues Training</h1>
+        <p className="mt-2 text-xs text-gray-500" aria-live="polite">
+          {autosaveStatus === "saving" && "Entwurf wird gespeichert ..."}
+          {autosaveStatus === "saved" && "Entwurf gespeichert"}
+          {autosaveStatus === "error" && "Entwurf konnte nicht gespeichert werden"}
+        </p>
 
         <label className="mt-6 block text-sm text-gray-300">
           Trainingsname

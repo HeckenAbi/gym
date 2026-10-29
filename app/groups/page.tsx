@@ -49,6 +49,13 @@ type Invite = {
   revoked_at: string | null;
   use_count: number;
 };
+type GroupComment = {
+  comment_id: string;
+  user_id: string;
+  display_name: string;
+  body: string;
+  created_at: string;
+};
 
 function formatDate(value: string | null) {
   if (!value) return "";
@@ -89,6 +96,10 @@ export default function GroupsPage() {
   const [groupName, setGroupName] = useState("");
   const [groupDescription, setGroupDescription] = useState("");
   const [inviteLink, setInviteLink] = useState("");
+  const [commentsByShare, setCommentsByShare] = useState<Record<string, GroupComment[]>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
+  const [commentSaving, setCommentSaving] = useState("");
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
@@ -187,6 +198,36 @@ export default function GroupsPage() {
     await loadGroup(selectedId, weekOffset);
   }
 
+  async function toggleComments(shareId: string) {
+    const nextOpen = !openComments[shareId];
+    setOpenComments((current) => ({ ...current, [shareId]: nextOpen }));
+    if (!nextOpen || commentsByShare[shareId]) return;
+    const { data, error: commentsError } = await supabase.rpc("get_group_comments", {
+      p_group_id: selectedId,
+      p_share_id: shareId,
+    });
+    if (commentsError) setError(`Kommentare konnten nicht geladen werden: ${commentsError.message}`);
+    else setCommentsByShare((current) => ({ ...current, [shareId]: (data ?? []) as GroupComment[] }));
+  }
+
+  async function addComment(shareId: string) {
+    const body = commentDrafts[shareId]?.trim();
+    if (!body || !selectedId || commentSaving) return;
+    setCommentSaving(shareId);
+    const { error: commentError } = await supabase.rpc("add_group_comment", {
+      p_group_id: selectedId,
+      p_share_id: shareId,
+      p_body: body,
+    });
+    if (commentError) setError(`Kommentar konnte nicht gespeichert werden: ${commentError.message}`);
+    else {
+      setCommentDrafts((current) => ({ ...current, [shareId]: "" }));
+      const { data } = await supabase.rpc("get_group_comments", { p_group_id: selectedId, p_share_id: shareId });
+      setCommentsByShare((current) => ({ ...current, [shareId]: (data ?? []) as GroupComment[] }));
+    }
+    setCommentSaving("");
+  }
+
   const activeInvite = useMemo(() => invites.find((invite) => !invite.revoked_at), [invites]);
 
   if (loading) return <main className="min-h-screen bg-[#090b10] p-8 text-white">Gruppen werden geladen ...</main>;
@@ -226,7 +267,55 @@ export default function GroupsPage() {
 
                 <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6"><div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-black">Crew einladen</h3><p className="mt-1 text-sm text-gray-400">Der Link ist 7 Tage gültig und einmal verwendbar.</p></div><span className="rounded-lg bg-lime-400/10 px-2 py-1 text-xs font-bold text-lime-400">Privat</span></div><button onClick={createInvite} disabled={saving} className="mt-5 w-full rounded-xl bg-lime-400 px-4 py-3 font-bold text-black disabled:opacity-50">{saving ? "Wird erstellt ..." : "Einladungslink erstellen"}</button>{inviteLink && <div className="mt-4"><label className="text-xs text-gray-500">Link zum Teilen</label><textarea readOnly value={inviteLink} className="mt-2 h-20 w-full resize-none rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-gray-300" /></div>}{activeInvite && <p className="mt-4 text-xs text-gray-500">Aktiver Link bis {formatDate(activeInvite.expires_at)} · {activeInvite.use_count}/1 verwendet</p>}</article></div>
 
-              <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]"><article className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6"><div className="flex items-center justify-between"><div><h3 className="text-xl font-black">Crew-Aktivität</h3><p className="mt-1 text-sm text-gray-400">Geteilte Trainings aus deiner Gruppe</p></div><button onClick={() => void loadGroup(selectedId, weekOffset)} className="text-sm font-bold text-lime-400">Aktualisieren</button></div><div className="mt-5 space-y-3">{feed.length === 0 ? <p className="rounded-xl border border-dashed border-white/10 p-6 text-center text-sm text-gray-500">Noch keine Aktivität. Teile dein erstes Training.</p> : feed.map((item) => <div key={item.share_id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-lime-400/15 text-xs font-bold text-lime-300">{initials(item.display_name)}</span><div className="min-w-0 flex-1"><p><strong>{item.display_name}</strong> hat <strong>{item.workout_name}</strong> geteilt.</p><p className="mt-1 text-xs text-gray-500">{formatDateTime(item.shared_at)} · {item.exercise_count} Übungen · {item.set_count} Sätze · {Math.round(item.total_volume || 0).toLocaleString("de-DE")} kg Volumen</p></div></div><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => void toggleReaction(item, "strong")} className={`rounded-lg border px-3 py-2 text-xs ${item.my_reaction === "strong" ? "border-lime-400/50 bg-lime-400/10 text-lime-300" : "border-white/10 text-gray-400"}`}>Stark {item.reaction_counts?.strong ? `· ${item.reaction_counts.strong}` : ""}</button><button onClick={() => void toggleReaction(item, "clap")} className={`rounded-lg border px-3 py-2 text-xs ${item.my_reaction === "clap" ? "border-lime-400/50 bg-lime-400/10 text-lime-300" : "border-white/10 text-gray-400"}`}>Applaus {item.reaction_counts?.clap ? `· ${item.reaction_counts.clap}` : ""}</button><button onClick={() => void toggleReaction(item, "fire")} className={`rounded-lg border px-3 py-2 text-xs ${item.my_reaction === "fire" ? "border-lime-400/50 bg-lime-400/10 text-lime-300" : "border-white/10 text-gray-400"}`}>Starkes Training {item.reaction_counts?.fire ? `· ${item.reaction_counts.fire}` : ""}</button></div></div>)}</div></article>
+              <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
+                <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-black">Crew-Aktivität</h3>
+                      <p className="mt-1 text-sm text-gray-400">Geteilte Trainings aus deiner Gruppe</p>
+                    </div>
+                    <button onClick={() => void loadGroup(selectedId, weekOffset)} className="text-sm font-bold text-lime-400">Aktualisieren</button>
+                  </div>
+                  <div className="mt-5 space-y-3">
+                    {feed.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-white/10 p-6 text-center text-sm text-gray-500">Noch keine Aktivität. Teile dein erstes Training.</p>
+                    ) : feed.map((item) => (
+                      <div key={item.share_id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex items-start gap-3">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-lime-400/15 text-xs font-bold text-lime-300">{initials(item.display_name)}</span>
+                          <div className="min-w-0 flex-1">
+                            <p><strong>{item.display_name}</strong> hat <strong>{item.workout_name}</strong> geteilt.</p>
+                            <p className="mt-1 text-xs text-gray-500">{formatDateTime(item.shared_at)} · {item.exercise_count} Übungen · {item.set_count} Sätze · {Math.round(item.total_volume || 0).toLocaleString("de-DE")} kg Volumen</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {(["strong", "clap", "fire"] as const).map((reaction) => (
+                            <button key={reaction} onClick={() => void toggleReaction(item, reaction)} className={`rounded-lg border px-3 py-2 text-xs ${item.my_reaction === reaction ? "border-lime-400/50 bg-lime-400/10 text-lime-300" : "border-white/10 text-gray-400"}`}>
+                              {reaction === "strong" ? "Stark" : reaction === "clap" ? "Applaus" : "Starkes Training"}{item.reaction_counts?.[reaction] ? ` · ${item.reaction_counts[reaction]}` : ""}
+                            </button>
+                          ))}
+                        </div>
+                        <button onClick={() => void toggleComments(item.share_id)} className="mt-3 text-xs font-semibold text-gray-400 hover:text-white">{openComments[item.share_id] ? "Kommentare schließen" : "Kommentare anzeigen"}</button>
+                        {openComments[item.share_id] && (
+                          <div className="mt-3 border-t border-white/10 pt-3">
+                            <div className="space-y-2">
+                              {(commentsByShare[item.share_id] ?? []).map((comment) => (
+                                <div key={comment.comment_id} className="rounded-lg bg-black/20 p-3 text-sm">
+                                  <p><strong>{comment.display_name}</strong> <span className="text-gray-500">· {formatDateTime(comment.created_at)}</span></p>
+                                  <p className="mt-1 text-gray-300">{comment.body}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-3 flex gap-2">
+                              <input value={commentDrafts[item.share_id] ?? ""} maxLength={500} onChange={(event) => setCommentDrafts((current) => ({ ...current, [item.share_id]: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void addComment(item.share_id); } }} className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-lime-400" placeholder="Kurze Nachricht ..." />
+                              <button onClick={() => void addComment(item.share_id)} disabled={commentSaving === item.share_id || !(commentDrafts[item.share_id] ?? "").trim()} className="rounded-lg bg-lime-400 px-3 py-2 text-xs font-bold text-black disabled:opacity-50">Senden</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </article>
 
                 <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6"><h3 className="text-xl font-black">Mitglieder</h3><p className="mt-1 text-sm text-gray-400">Wer ist dabei?</p><div className="mt-5 space-y-2">{members.map((member) => <div key={member.user_id} className="flex items-center gap-3 rounded-xl bg-white/[0.03] p-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs font-bold">{initials(member.display_name)}</span><span className="min-w-0 flex-1 truncate font-semibold">{member.display_name}</span><span className="text-xs capitalize text-gray-500">{member.role}</span></div>)}</div></article></div>
             </section>}
