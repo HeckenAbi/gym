@@ -184,6 +184,7 @@ export default function Dashboard() {
   const router = useRouter();
   const [now, setNow] = useState("2020-01-06T00:00:00.000Z");
   const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -205,6 +206,8 @@ export default function Dashboard() {
       }
 
       setEmail(sessionData.session.user.email ?? "");
+      const { data: profileData } = await supabase.rpc("get_my_profile");
+      if (active) setDisplayName(profileData?.[0]?.display_name ?? "");
 
       const { data, error: queryError } = await supabase
         .from("workouts")
@@ -370,7 +373,7 @@ export default function Dashboard() {
           </button>
 
           <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-gray-400 sm:block">{email}</span>
+            <span className="hidden text-sm text-gray-400 sm:block">{displayName || email}</span>
             <button
               onClick={logout}
               className="rounded-xl border border-white/15 px-4 py-2 text-sm text-gray-300 transition hover:bg-white/5"
@@ -406,6 +409,13 @@ export default function Dashboard() {
           <p className="mb-5 break-words rounded-xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-300">
             {error}
           </p>
+        )}
+
+        {!displayName && (
+          <section className="mb-5 flex flex-col justify-between gap-4 rounded-2xl border border-lime-400/20 bg-lime-400/[0.07] p-5 sm:flex-row sm:items-center">
+            <div><p className="font-bold text-lime-200">Mach dein Profil fertig</p><p className="mt-1 text-sm text-gray-400">Setze einen Anzeigenamen, damit deine Crew dich in Feed und Rangliste erkennt.</p></div>
+            <button onClick={() => router.push("/profile")} className="shrink-0 rounded-xl bg-lime-400 px-4 py-2 text-sm font-bold text-black">Profil einrichten</button>
+          </section>
         )}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
