@@ -24,6 +24,7 @@ type Workout = {
   finished_at: string | null;
   workout_exercises: ExerciseData[];
 };
+type MuscleVolume = { name: string; volume: number; share: number };
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("de-DE", {
@@ -189,6 +190,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedExercise, setSelectedExercise] = useState("");
+  const [muscleGroupByName, setMuscleGroupByName] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setNow(new Date().toISOString());
@@ -208,6 +210,13 @@ export default function Dashboard() {
       setEmail(sessionData.session.user.email ?? "");
       const { data: profileData } = await supabase.rpc("get_my_profile");
       if (active) setDisplayName(profileData?.[0]?.display_name ?? "");
+      const { data: exerciseLibrary } = await supabase
+        .from("exercises")
+        .select("name, muscle_group")
+        .eq("user_id", sessionData.session.user.id);
+      if (active) {
+        setMuscleGroupByName(Object.fromEntries((exerciseLibrary ?? []).map((exercise) => [exercise.name.trim().toLowerCase(), exercise.muscle_group || "Sonstiges"])));
+      }
 
       const { data, error: queryError } = await supabase
         .from("workouts")
@@ -272,6 +281,7 @@ export default function Dashboard() {
     let totalSets = 0;
     let bestWeight = 0;
     let bestExercise = "Noch keine Daten";
+    const muscleVolumes = new Map<string, number>();
 
     for (const workout of workouts) {
       const weekKey = getWeekKey(new Date(workout.started_at));
@@ -291,6 +301,8 @@ export default function Dashboard() {
 
           totalVolume += volume;
           totalSets += 1;
+          const muscleGroup = muscleGroupByName[name?.toLowerCase() ?? ""] || "Sonstiges";
+          muscleVolumes.set(muscleGroup, (muscleVolumes.get(muscleGroup) ?? 0) + volume);
 
           if (weekVolume.has(weekKey)) {
             weekVolume.set(
@@ -307,6 +319,7 @@ export default function Dashboard() {
       }
     }
 
+    const sortedMuscleVolumes = Array.from(muscleVolumes.entries()).sort(([, left], [, right]) => right - left);
     return {
       weeks,
       weekCounts: weeks.map((week) => weekCounts.get(week.key) ?? 0),
@@ -314,13 +327,14 @@ export default function Dashboard() {
       currentWeekVolume: weekVolume.get(weeks.at(-1)?.key ?? "") ?? 0,
       previousWeekVolume: weekVolume.get(weeks.at(-2)?.key ?? "") ?? 0,
       averageRecentVolume: weeks.slice(-4).reduce((sum, week) => sum + (weekVolume.get(week.key) ?? 0), 0) / 4,
+      muscleVolumes: sortedMuscleVolumes.map(([name, volume]) => ({ name, volume, share: totalVolume > 0 ? (volume / totalVolume) * 100 : 0 })) as MuscleVolume[],
       totalVolume,
       totalSets,
       bestWeight,
       bestExercise,
       exerciseNames: Array.from(exercises).sort((a, b) => a.localeCompare(b)),
     };
-  }, [workouts, now]);
+  }, [workouts, now, muscleGroupByName]);
 
   const volumeDeltaPercent = stats.previousWeekVolume > 0
     ? ((stats.currentWeekVolume - stats.previousWeekVolume) / stats.previousWeekVolume) * 100
@@ -504,6 +518,7 @@ export default function Dashboard() {
                 labels={stats.weeks.map((week) => week.label)}
                 values={stats.weekVolume}
               />
+              <div className="mt-6 border-t border-white/10 pt-5"><div className="flex items-center justify-between"><h3 className="text-sm font-bold">Volumen nach Muskelgruppe</h3><span className="text-xs text-gray-500">Gesamtzeitraum</span></div>{stats.muscleVolumes.length === 0 ? <p className="mt-4 text-sm text-gray-500">Sobald du Sätze speicherst, erscheint hier die Aufteilung.</p> : <div className="mt-4 space-y-3">{stats.muscleVolumes.map((muscle, index) => <div key={muscle.name}><div className="mb-1 flex justify-between gap-3 text-xs"><span className="font-semibold text-gray-300">{muscle.name}</span><span className="text-gray-500">{formatNumber(muscle.volume)} kg · {formatNumber(muscle.share)}%</span></div><div className="h-2 overflow-hidden rounded-full bg-white/10"><div className={`h-full rounded-full ${index === 0 ? "bg-lime-400" : index === 1 ? "bg-cyan-400" : index === 2 ? "bg-violet-400" : "bg-white/40"}`} style={{ width: `${Math.min(100, muscle.share)}%` }} /></div></div>)}</div>}</div>
             </div>
           </article>
         </section>
