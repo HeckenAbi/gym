@@ -13,6 +13,11 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pendingInvite] = useState(() =>
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("invite") || ""
+      : ""
+  );
 
   async function handleAuth(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -28,7 +33,7 @@ export default function Home() {
 
         if (error) throw error;
 
-        router.push("/dashboard");
+        router.push(pendingInvite ? `/groups/invite?token=${encodeURIComponent(pendingInvite)}` : "/dashboard");
         return;
       } else {
         const { error } = await supabase.auth.signUp({
