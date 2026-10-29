@@ -109,6 +109,7 @@ export default function GroupsPage() {
   const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
   const [commentSaving, setCommentSaving] = useState("");
   const [challenge, setChallenge] = useState<WeeklyChallenge | null>(null);
+  const [currentUserId, setCurrentUserId] = useState("");
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
@@ -118,6 +119,7 @@ export default function GroupsPage() {
       router.replace("/");
       return;
     }
+    setCurrentUserId(sessionData.session.user.id);
     const { data, error: queryError } = await supabase.rpc("get_my_groups");
     if (queryError) {
       setError(`Gruppen konnten nicht geladen werden: ${queryError.message}`);
@@ -193,6 +195,13 @@ export default function GroupsPage() {
     const { error: revokeError } = await supabase.rpc("revoke_group_invite", { p_invite_id: inviteId });
     if (revokeError) setError(`Einladung konnte nicht widerrufen werden: ${revokeError.message}`);
     else { setMessage("Einladungslink widerrufen."); await loadGroup(selectedId, weekOffset); }
+  }
+
+  async function unshareWorkout(shareId: string) {
+    if (!window.confirm("Dieses Training wirklich aus dem Crew-Feed entfernen?")) return;
+    const { error: unshareError } = await supabase.rpc("unshare_finished_workout", { p_share_id: shareId });
+    if (unshareError) setError(`Training konnte nicht entfernt werden: ${unshareError.message}`);
+    else { setMessage("Training aus dem Crew-Feed entfernt."); await loadGroup(selectedId, weekOffset); }
   }
 
   async function leaveGroup() {
@@ -306,6 +315,7 @@ export default function GroupsPage() {
                           <div className="min-w-0 flex-1">
                             <p><strong>{item.display_name}</strong> hat <strong>{item.workout_name}</strong> geteilt.</p>
                             <p className="mt-1 text-xs text-gray-500">{formatDateTime(item.shared_at)} · {item.exercise_count} Übungen · {item.set_count} Sätze · {Math.round(item.total_volume || 0).toLocaleString("de-DE")} kg Volumen</p>
+                            {item.shared_by === currentUserId && <button onClick={() => void unshareWorkout(item.share_id)} className="mt-2 text-xs font-semibold text-red-300 hover:text-red-200">Nicht mehr teilen</button>}
                           </div>
                         </div>
                         <div className="mt-4 flex flex-wrap gap-2">
