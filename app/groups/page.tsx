@@ -56,6 +56,14 @@ type GroupComment = {
   body: string;
   created_at: string;
 };
+type WeeklyChallenge = {
+  week_start: string;
+  active_members: number;
+  members_at_goal: number;
+  target_per_member: number;
+  completed: boolean;
+  progress_percent: number;
+};
 
 function formatDate(value: string | null) {
   if (!value) return "";
@@ -100,6 +108,7 @@ export default function GroupsPage() {
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
   const [commentSaving, setCommentSaving] = useState("");
+  const [challenge, setChallenge] = useState<WeeklyChallenge | null>(null);
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
@@ -138,6 +147,8 @@ export default function GroupsPage() {
     setMembers((membersResult.data ?? []) as Member[]);
     setFeed((feedResult.data ?? []) as FeedItem[]);
     setInvites((invitesResult.data ?? []) as Invite[]);
+    const { data: challengeData, error: challengeError } = await supabase.rpc("get_group_weekly_challenge", { p_group_id: groupId, p_week_offset: offset });
+    if (!challengeError) setChallenge(((challengeData ?? [])[0] ?? null) as WeeklyChallenge | null);
     setDetailLoading(false);
   }, []);
 
@@ -175,6 +186,13 @@ export default function GroupsPage() {
       await loadGroup(selectedId, weekOffset);
     }
     setSaving(false);
+  }
+
+  async function revokeInvite(inviteId: string) {
+    if (!window.confirm("Diesen Einladungslink wirklich widerrufen?")) return;
+    const { error: revokeError } = await supabase.rpc("revoke_group_invite", { p_invite_id: inviteId });
+    if (revokeError) setError(`Einladung konnte nicht widerrufen werden: ${revokeError.message}`);
+    else { setMessage("Einladungslink widerrufen."); await loadGroup(selectedId, weekOffset); }
   }
 
   async function leaveGroup() {
@@ -263,9 +281,11 @@ export default function GroupsPage() {
             {detailLoading || !overview ? <section className="rounded-2xl border border-white/10 bg-[#11141c] p-8 text-gray-400">Gruppendaten werden geladen ...</section> : <section className="space-y-5">
               <div className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-7"><div className="flex flex-wrap items-start justify-between gap-5"><div><p className="text-xs font-bold uppercase tracking-widest text-lime-400">Private Crew</p><h2 className="mt-2 text-3xl font-black">{overview.name}</h2><p className="mt-2 max-w-2xl text-gray-400">{overview.description || "Trainiert zusammen, bleibt konstant und feiert jeden Trainingstag."}</p></div><button onClick={leaveGroup} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-gray-400 hover:border-red-400/40 hover:text-red-300">Gruppe verlassen</button></div><div className="mt-6 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-white/[0.04] p-4"><p className="text-sm text-gray-500">Mitglieder</p><p className="mt-1 text-2xl font-black">{overview.member_count}</p></div><div className="rounded-xl bg-white/[0.04] p-4"><p className="text-sm text-gray-500">Deine Rolle</p><p className="mt-1 text-2xl font-black capitalize">{overview.my_role}</p></div><div className="rounded-xl bg-lime-400/10 p-4"><p className="text-sm text-gray-500">Woche</p><p className="mt-1 text-2xl font-black text-lime-400">{leaderboard.reduce((sum, row) => sum + row.points, 0)} Punkte</p></div></div></div>
 
+              {challenge && <article className="rounded-2xl border border-lime-400/20 bg-lime-400/[0.06] p-5 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-widest text-lime-400">Wochen-Challenge</p><h3 className="mt-2 text-2xl font-black">Gemeinsam konstant bleiben</h3><p className="mt-1 text-sm text-gray-400">Ziel: {challenge.target_per_member} Trainingstage pro Mitglied diese Woche.</p></div><strong className="text-3xl text-lime-400">{challenge.progress_percent}%</strong></div><div className="mt-5 h-3 overflow-hidden rounded-full bg-black/30"><div className="h-full rounded-full bg-lime-400 transition-all" style={{ width: `${Math.min(challenge.progress_percent, 100)}%` }} /></div><div className="mt-3 flex justify-between text-xs text-gray-500"><span>{challenge.members_at_goal} von {challenge.active_members} Mitgliedern am Ziel</span><span>{challenge.completed ? "Challenge geschafft" : "Noch nicht geschafft"}</span></div></article>}
+
               <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]"><article className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-xl font-black">Wochenrangliste</h3><p className="mt-1 text-sm text-gray-400">Ein Trainingstag zählt. Nicht das schwerste Gewicht.</p></div><div className="flex gap-1"><button onClick={() => setWeekOffset(-1)} className={`rounded-lg px-3 py-2 text-xs ${weekOffset === -1 ? "bg-lime-400 text-black" : "bg-white/5 text-gray-400"}`}>Letzte Woche</button><button onClick={() => setWeekOffset(0)} className={`rounded-lg px-3 py-2 text-xs ${weekOffset === 0 ? "bg-lime-400 text-black" : "bg-white/5 text-gray-400"}`}>Diese Woche</button></div></div><div className="mt-5 space-y-2">{leaderboard.length === 0 ? <p className="rounded-xl border border-dashed border-white/10 p-6 text-center text-sm text-gray-500">Noch keine geteilten Trainings in dieser Woche.</p> : leaderboard.map((row, index) => <div key={row.user_id} className={`flex items-center gap-3 rounded-xl p-3 ${index === 0 ? "bg-lime-400/10" : "bg-white/[0.03]"}`}><span className="w-7 text-center text-sm font-black text-gray-500">{row.rank}.</span><span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs font-bold">{initials(row.display_name)}</span><span className="min-w-0 flex-1 truncate font-semibold">{row.display_name}</span><span className="text-right"><strong className="block text-lime-400">{row.points} P</strong><small className="text-gray-500">{row.workout_days} Tage</small></span></div>)}</div></article>
 
-                <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6"><div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-black">Crew einladen</h3><p className="mt-1 text-sm text-gray-400">Der Link ist 7 Tage gültig und einmal verwendbar.</p></div><span className="rounded-lg bg-lime-400/10 px-2 py-1 text-xs font-bold text-lime-400">Privat</span></div><button onClick={createInvite} disabled={saving} className="mt-5 w-full rounded-xl bg-lime-400 px-4 py-3 font-bold text-black disabled:opacity-50">{saving ? "Wird erstellt ..." : "Einladungslink erstellen"}</button>{inviteLink && <div className="mt-4"><label className="text-xs text-gray-500">Link zum Teilen</label><textarea readOnly value={inviteLink} className="mt-2 h-20 w-full resize-none rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-gray-300" /></div>}{activeInvite && <p className="mt-4 text-xs text-gray-500">Aktiver Link bis {formatDate(activeInvite.expires_at)} · {activeInvite.use_count}/1 verwendet</p>}</article></div>
+                <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6"><div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-black">Crew einladen</h3><p className="mt-1 text-sm text-gray-400">Der Link ist 7 Tage gültig und einmal verwendbar.</p></div><span className="rounded-lg bg-lime-400/10 px-2 py-1 text-xs font-bold text-lime-400">Privat</span></div><button onClick={createInvite} disabled={saving} className="mt-5 w-full rounded-xl bg-lime-400 px-4 py-3 font-bold text-black disabled:opacity-50">{saving ? "Wird erstellt ..." : "Einladungslink erstellen"}</button>{inviteLink && <div className="mt-4"><label className="text-xs text-gray-500">Link zum Teilen</label><textarea readOnly value={inviteLink} className="mt-2 h-20 w-full resize-none rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-gray-300" /></div>}{activeInvite && <div className="mt-4 flex items-center justify-between gap-3"><p className="text-xs text-gray-500">Aktiver Link bis {formatDate(activeInvite.expires_at)} · {activeInvite.use_count}/1 verwendet</p><button onClick={() => void revokeInvite(activeInvite.invite_id)} className="text-xs font-semibold text-red-300 hover:text-red-200">Widerrufen</button></div>}</article></div>
 
               <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
                 <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6">
