@@ -2,9 +2,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "../src/lib/supabase";
 
 export default function Home() {
+  const router = useRouter();
   const [showAuth, setShowAuth] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -26,7 +28,7 @@ export default function Home() {
 
         if (error) throw error;
 
-        window.location.href = "/dashboard";
+        router.push("/dashboard");
         return;
       } else {
         const { error } = await supabase.auth.signUp({

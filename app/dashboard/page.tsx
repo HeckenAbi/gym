@@ -1,6 +1,8 @@
 
 "use client";
 
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../src/lib/supabase";
@@ -36,8 +38,7 @@ function getWeekKey(date: Date) {
   return d.toISOString().slice(0, 10);
 }
 
-function getLastWeeks(count: number) {
-  const now = new Date();
+function getLastWeeks(count: number, now: Date) {
   const monday = new Date(now);
   monday.setHours(0, 0, 0, 0);
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
@@ -181,6 +182,7 @@ function LineChart({
 
 export default function Dashboard() {
   const router = useRouter();
+  const [now, setNow] = useState("2020-01-06T00:00:00.000Z");
   const [email, setEmail] = useState("");
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
@@ -188,6 +190,7 @@ export default function Dashboard() {
   const [selectedExercise, setSelectedExercise] = useState("");
 
   useEffect(() => {
+    setNow(new Date().toISOString());
     let active = true;
 
     async function loadDashboard() {
@@ -257,7 +260,7 @@ export default function Dashboard() {
   }
 
   const stats = useMemo(() => {
-    const weeks = getLastWeeks(8);
+    const weeks = getLastWeeks(8, new Date(now));
     const weekCounts = new Map(weeks.map((week) => [week.key, 0]));
     const weekVolume = new Map(weeks.map((week) => [week.key, 0]));
 
@@ -311,7 +314,7 @@ export default function Dashboard() {
       bestExercise,
       exerciseNames: Array.from(exercises).sort((a, b) => a.localeCompare(b)),
     };
-  }, [workouts]);
+  }, [workouts, now]);
 
   const strengthProgress = useMemo(() => {
     if (!selectedExercise) return [];

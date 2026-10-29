@@ -1,0 +1,1 @@
+{"routes":[{"path":"/","title":"Startseite"},{"path":"/dashboard","title":"Dashboard"},{"path":"/training","title":"Training"},{"path":"/training/:id","title":"Training ansehen"},{"path":"/groups","title":"Meine Gruppen"},{"path":"/groups/invite","title":"Gruppeneinladung"}]}
