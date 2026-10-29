@@ -6,6 +6,7 @@ const items = [
   { href: "/dashboard", label: "Übersicht", short: "Home" },
   { href: "/training", label: "Training", short: "Training" },
   { href: "/groups", label: "Crews", short: "Crews" },
+  { href: "/profile", label: "Profil", short: "Profil" },
 ];
 
 export default function AppNav() {
