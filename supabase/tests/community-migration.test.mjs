@@ -1,13 +1,13 @@
 import { PGlite } from "@electric-sql/pglite";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import assert from "node:assert/strict";
 
 const db = new PGlite();
-const migrations = await Promise.all([
-  "../migrations/20261028225000_legacy_group_schema_compat.sql",
-  "../migrations/20261028230000_community_and_workout_sync.sql",
-  "../migrations/20261029001000_group_league_scoring.sql",
-].map((path) => readFile(new URL(path, import.meta.url), "utf8")));
+const migrationDirectory = new URL("../migrations/", import.meta.url);
+const migrationFiles = (await readdir(migrationDirectory))
+  .filter((file) => file.endsWith(".sql"))
+  .sort((left, right) => left.localeCompare(right));
+const migrations = await Promise.all(migrationFiles.map((file) => readFile(new URL(file, migrationDirectory), "utf8")));
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";

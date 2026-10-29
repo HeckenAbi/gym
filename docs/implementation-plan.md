@@ -2,7 +2,7 @@
 
 ## Implementiert
 
-Die Next.js-/Supabase-App umfasst Gruppen, geteilte Trainings, Ranglisten, Challenges, Cloud-/Offline-Sync und eine Übungsbibliothek. Die Migrationen liegen in `supabase/migrations/20261028225000_legacy_group_schema_compat.sql`, `supabase/migrations/20261028230000_community_and_workout_sync.sql` und `supabase/migrations/20261029001000_group_league_scoring.sql`.
+Die Next.js-/Supabase-App umfasst Gruppen, geteilte Trainings, Ranglisten, Challenges, Cloud-/Offline-Sync und eine Übungsbibliothek. Die nummerierten Migrationen liegen in `supabase/migrations/`: `20261029090319_legacy_group_schema_compat.sql`, `20261029091500_community_schema_and_policies.sql`, `20261029091600_community_group_social.sql`, `20261029091700_community_workout_sync.sql` und `20261029091800_group_league_scoring.sql`. Die Community-Funktionen sind auf drei transaktionale Schritte verteilt; Funktionen und ihre Berechtigungen werden jeweils gemeinsam angelegt.
 
 **Gruppen und soziale Funktionen:** private Gruppen mit Owner/Admin/Member-Rollen, sieben Tage gültige Einmal-Einladungen (serverseitig nur SHA-256-Hash), mitgliedschaftsgebundene Feed-/Kommentar-/Reaktionssichtbarkeit und freiwillige Trainingsfreigabe. Owner können verwalten, übertragen oder archivieren.
 
@@ -10,22 +10,25 @@ Die Next.js-/Supabase-App umfasst Gruppen, geteilte Trainings, Ranglisten, Chall
 
 **Training und Übungsbibliothek:** revisionierte Cloud-Drafts, atomarer/idempotenter Abschluss, IndexedDB-Outbox und explizite Konfliktwahl. Die Bibliothek umfasst genau 50 Übungen (25 Kurzhantel, 25 Kabelturm) mit schematischen SVG-Loops, Filtern, Technikhinweisen und direkter Übernahme ins Training.
 
-## Live-Projekt „Gym Battle“ – read-only Befund
+## Live-Projekt „Gym Battle“ – bestätigter Stand
 
-Das verbundene Projekt hatte keinen protokollierten Migrationsverlauf, aber manuell angelegte Gruppentabellen mit älterem Schema: `gym_groups.owner_id` statt `created_by`, keine `role`-/`status`-Spalten in `group_members`, sowie UUID-Token und `used_at`/`revoked` in `group_invites`. Ein bestehendes `is_group_member(target_group uuid)` und alte RLS-Policies waren vorhanden.
+Die Migration `legacy_group_schema_compat` ist auf Projekt `vbppgevobtshfumdpwms` angewendet (Supabase-Version `20261029090319`). Sie hat das Legacy-Gruppenschema kompatibel gemacht und Einladungstokens gehasht. Die anschließende Prüfung ergab 0 Gruppen, 0 Mitglieder und 0 Einladungen; die drei vorhandenen Trainings blieben erhalten. Alte Gruppen-Policies wurden entfernt.
 
-Die Tabellenzählung zeigte null Gruppen, Mitglieder und Einladungen sowie drei Trainings, davon null gruppenverknüpft und null mit gesetztem `is_shared`-Flag. Trainingsinhalte wurden nicht gelesen. Es wurden keine Supabase-Tabellen, Policies oder Daten geändert.
+Die drei Community-Teilmigrationen und die League-Migration sind **noch nicht live angewendet**. Bis sie ausgeführt sind, sind Gruppenanlage, Community-Feed, Cloud-Autosave und neue Wertung in der Live-Datenbank noch nicht freigeschaltet.
 
 ## Kompatibilität und lokale Prüfung
 
-Die Vorbereitungsdatei `20261028225000_legacy_group_schema_compat.sql` normalisiert das Legacy-Schema: alte Gruppenpolicies und inkompatible Helper-Signatur werden entfernt; `owner_id` wird verlustfrei in `created_by` überführt; fehlende Gruppen-/Rollen-/Statusfelder werden ergänzt; alte Einladungs-UUIDs werden mit pgcrypto gehasht, bevor die Klartextspalte entfernt wird. Sind Tokens nicht sicher wiederherstellbar, bricht die Migration ab.
+`20261029090319_legacy_group_schema_compat.sql` normalisiert das Legacy-Schema: alte Gruppenpolicies und inkompatible Helper-Signatur werden entfernt; `owner_id` wird verlustfrei in `created_by` überführt; fehlende Gruppen-/Rollen-/Statusfelder werden ergänzt; alte Einladungs-UUIDs werden mit pgcrypto gehasht, bevor die Klartextspalte entfernt wird. Sind Tokens nicht sicher wiederherstellbar, bricht die Migration ab.
 
-`npm run test:community-db` spielt alle drei Migrationen sowohl gegen eine frische Basis als auch gegen eine Legacy-Fixture ab, die dem verbundenen Schema entspricht. Die Legacy-Fixture enthält eine alte Gruppe, Einladung, alte RLS-Policies und drei private Workouts. Der Test bestätigt Rollenübernahme, Token-Hashing, Erhalt der Workouts und die Community-/Ranglistenregeln. Zusätzlich bestanden ESLint, TypeScript, `git diff --check` und der Next.js-Produktionsbuild mit Platzhalterwerten.
+`npm run test:community-db` spielt alle fünf lokalen Migrationsdateien sowohl gegen eine frische Basis als auch gegen eine Legacy-Fixture ab, die dem verbundenen Schema entspricht. Der Test bestätigt Rollenübernahme, Token-Hashing, Erhalt der Trainings, Gruppen-/Einladungsabläufe, Draft-Synchronisierung, Feed-/RLS-Verhalten, 3-Satz-/10-Wiederholungs-Qualifikation und unbegrenzte Wochenpunkte. Der PGlite-Test und `git diff --check` bestanden nach der Aufteilung.
 
-## Vor Live-Anwendung
+## Noch ausstehende Live-Schritte
 
-Die Migrationen wurden noch **nicht** auf Supabase ausgeführt. Eine Anwendung auf das verbundene Projekt ändert Tabellenstruktur und RLS-Policies. Dafür ist eine ausdrückliche Freigabe erforderlich; der PGlite-Test ersetzt keine Prüfung mit echten Supabase-Auth-Nutzern/PostgREST. Die temporäre PC-Vorschau nutzt Platzhalterwerte und ist nicht mit diesem Projekt verbunden.
+1. Die drei Community-Teilmigrationen und danach die League-Migration auf Supabase anwenden.
+2. Die Hosting-Umgebungsvariablen von Platzhaltern auf Supabase-URL und Publishable/Anon-Key setzen.
+3. Gruppenanlage und freiwilliges Teilen eines Trainings mit echten Auth-Nutzern im PC-/Handy-Preview live testen.
+4. Kleine UI-Nacharbeiten: Verlauf als aktive Route markieren und Rücksprungadresse nach direktem `/groups`-Login erhalten.
 
 ## Weitere bekannte Nacharbeit
 
-Client- und SQL-Eingabegrenzen im Training angleichen; Cloud-Autosave beim Verlassen sichtbar abschließen; Trainingsdetails-Abbrechen soll Änderungen zurücksetzen und mehrere Detailänderungen atomar speichern; Verlauf als aktive Route markieren und Rücksprungadresse nach direktem `/groups`-Login erhalten. PWA-Erststart ohne Netz ist nicht enthalten.
+Client- und SQL-Eingabegrenzen im Training angleichen; Cloud-Autosave beim Verlassen sichtbar abschließen; Trainingsdetails-Abbrechen soll Änderungen zurücksetzen und mehrere Detailänderungen atomar speichern. PWA-Erststart ohne Netz ist nicht enthalten.
