@@ -11,6 +11,8 @@ export default function Home() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [forgotMode, setForgotMode] = useState(false);
@@ -37,6 +39,8 @@ export default function Home() {
         router.push(pendingInvite ? `/groups/invite?token=${encodeURIComponent(pendingInvite)}` : "/dashboard");
         return;
       } else {
+        if (password !== passwordConfirm) throw new Error("Die Passwörter stimmen nicht überein.");
+        if (!acceptedTerms) throw new Error("Bitte akzeptiere die Nutzungsbedingungen und den Datenschutzhinweis.");
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -225,6 +229,11 @@ export default function Home() {
               </label>}
 
               {!forgotMode && isLogin && <button type="button" onClick={() => { setForgotMode(true); setMessage(""); }} className="text-sm text-lime-400 hover:underline">Passwort vergessen?</button>}
+
+              {!forgotMode && !isLogin && <>
+                <label className="block text-sm text-gray-300">Passwort wiederholen<input type="password" required minLength={6} autoComplete="new-password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 text-white outline-none focus:border-lime-400" placeholder="Passwort erneut eingeben" /></label>
+                <label className="flex items-start gap-3 text-sm text-gray-400"><input type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} className="mt-1 accent-lime-400" /> <span>Ich akzeptiere die Nutzungsbedingungen und den Datenschutzhinweis.</span></label>
+              </>}
 
               {message && (
                 <p
