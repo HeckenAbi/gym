@@ -311,6 +311,9 @@ export default function Dashboard() {
       weeks,
       weekCounts: weeks.map((week) => weekCounts.get(week.key) ?? 0),
       weekVolume: weeks.map((week) => weekVolume.get(week.key) ?? 0),
+      currentWeekVolume: weekVolume.get(weeks.at(-1)?.key ?? "") ?? 0,
+      previousWeekVolume: weekVolume.get(weeks.at(-2)?.key ?? "") ?? 0,
+      averageRecentVolume: weeks.slice(-4).reduce((sum, week) => sum + (weekVolume.get(week.key) ?? 0), 0) / 4,
       totalVolume,
       totalSets,
       bestWeight,
@@ -318,6 +321,11 @@ export default function Dashboard() {
       exerciseNames: Array.from(exercises).sort((a, b) => a.localeCompare(b)),
     };
   }, [workouts, now]);
+
+  const volumeDeltaPercent = stats.previousWeekVolume > 0
+    ? ((stats.currentWeekVolume - stats.previousWeekVolume) / stats.previousWeekVolume) * 100
+    : stats.currentWeekVolume > 0 ? 100 : 0;
+  const volumeTrendLabel = volumeDeltaPercent > 3 ? "Steigend" : volumeDeltaPercent < -3 ? "Rückläufig" : "Stabil";
 
   const strengthProgress = useMemo(() => {
     if (!selectedExercise) return [];
@@ -477,11 +485,12 @@ export default function Dashboard() {
           </article>
 
           <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6">
-            <div>
-              <h2 className="text-lg font-bold">Trainingsvolumen</h2>
-              <p className="mt-1 text-sm text-gray-400">
-                Bewegtes Gesamtgewicht pro Woche
-              </p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold">Automatischer Wochen-Volumen-Trend</h2>
+                <p className="mt-1 text-sm text-gray-400">Bewegtes Gesamtgewicht, automatisch aus deinen Sätzen berechnet.</p>
+              </div>
+              <span className={`rounded-lg px-3 py-1 text-xs font-bold ${volumeTrendLabel === "Steigend" ? "bg-lime-400/10 text-lime-400" : volumeTrendLabel === "Rückläufig" ? "bg-orange-400/10 text-orange-300" : "bg-white/10 text-gray-300"}`}>{volumeTrendLabel}</span>
             </div>
 
             <div className="mt-6">
@@ -489,6 +498,8 @@ export default function Dashboard() {
                 {formatNumber(stats.totalVolume)}{" "}
                 <span className="text-sm font-medium text-gray-400">kg insgesamt</span>
               </p>
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500"><span>Diese Woche: <strong className="text-gray-300">{formatNumber(stats.currentWeekVolume)} kg</strong></span><span>Vorwoche: <strong className="text-gray-300">{formatNumber(stats.previousWeekVolume)} kg</strong></span><span>Veränderung: <strong className={volumeDeltaPercent >= 0 ? "text-lime-400" : "text-orange-300"}>{volumeDeltaPercent >= 0 ? "+" : ""}{formatNumber(volumeDeltaPercent)}%</strong></span></div>
+              <p className="mt-2 text-xs text-gray-500">4-Wochen-Durchschnitt: {formatNumber(stats.averageRecentVolume)} kg</p>
               <LineChart
                 labels={stats.weeks.map((week) => week.label)}
                 values={stats.weekVolume}
