@@ -18,6 +18,7 @@ type SetEntry = {
   weight: string;
   reps: string;
   persisted: boolean;
+  rpe?: string;
 };
 
 type ExerciseEntry = {
@@ -97,17 +98,18 @@ export default function WorkoutDetails({ workoutId }: { workoutId: string }) {
       const exerciseIds = exerciseList.map((exercise) => exercise.id);
 
       let loadedSets: {
-        id: string;
-        set_number: number;
-        weight: number;
-        reps: number;
-        workout_exercise_id: string;
+      id: string;
+      set_number: number;
+      weight: number;
+      reps: number;
+      rpe: number | null;
+      workout_exercise_id: string;
       }[] = [];
 
       if (exerciseIds.length > 0) {
         const { data: setData, error: setQueryError } = await supabase
           .from("workout_sets")
-          .select("id, set_number, weight, reps, workout_exercise_id")
+          .select("id, set_number, weight, reps, rpe, workout_exercise_id")
           .in("workout_exercise_id", exerciseIds)
           .order("set_number", { ascending: true });
 
@@ -134,6 +136,7 @@ export default function WorkoutDetails({ workoutId }: { workoutId: string }) {
             set_number: set.set_number,
             weight: String(set.weight),
             reps: String(set.reps),
+            rpe: set.rpe == null ? "" : String(set.rpe),
             persisted: true,
           })),
       }));
@@ -217,7 +220,7 @@ export default function WorkoutDetails({ workoutId }: { workoutId: string }) {
   function updateSet(
     exerciseId: string,
     setId: string,
-    field: "weight" | "reps",
+    field: "weight" | "reps" | "rpe",
     value: string
   ) {
     setExercises((current) =>
@@ -400,6 +403,7 @@ export default function WorkoutDetails({ workoutId }: { workoutId: string }) {
             set_number: j + 1,
             weight: Number(set.weight),
             reps: Number(set.reps),
+            rpe: set.rpe?.trim() ? Number(set.rpe) : null,
           };
 
           if (set.persisted) {
@@ -415,6 +419,7 @@ export default function WorkoutDetails({ workoutId }: { workoutId: string }) {
               ...setData,
               weight: String(setData.weight),
               reps: String(setData.reps),
+              rpe: set.rpe ?? "",
               persisted: true,
             });
           } else {
@@ -435,6 +440,7 @@ export default function WorkoutDetails({ workoutId }: { workoutId: string }) {
               ...setData,
               weight: String(setData.weight),
               reps: String(setData.reps),
+              rpe: set.rpe ?? "",
               persisted: true,
             });
           }
@@ -767,6 +773,7 @@ export default function WorkoutDetails({ workoutId }: { workoutId: string }) {
                         ×
                       </button>
                     )}
+                    <label className="col-span-4 text-xs text-gray-500">RPE: {editing ? <select value={set.rpe ?? ""} onChange={(event) => updateSet(exercise.id, set.id, "rpe", event.target.value)} className="ml-2 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-gray-300"><option value="">nicht angegeben</option>{Array.from({ length: 11 }, (_, value) => <option key={value} value={value}>{value}/10</option>)}</select> : set.rpe ? `${set.rpe}/10` : "nicht angegeben"}</label>
                   </div>
                 ))}
 

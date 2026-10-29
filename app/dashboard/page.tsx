@@ -353,6 +353,11 @@ export default function Dashboard() {
       .slice(-8);
   }, [workouts, selectedExercise]);
 
+  const recentWorkout = workouts.find((workout) => workout.finished_at) ?? null;
+  const daysSinceWorkout = recentWorkout ? Math.max(0, Math.floor((new Date(now).getTime() - new Date(recentWorkout.started_at).getTime()) / 86400000)) : null;
+  const currentWeekWorkouts = stats.weekCounts.at(-1) ?? 0;
+  const weeklyTarget = 3;
+
   if (loading) {
     return (
       <main className="min-h-screen bg-[#090b10] p-8 text-white">
@@ -417,6 +422,11 @@ export default function Dashboard() {
             <button onClick={() => router.push("/profile")} className="shrink-0 rounded-xl bg-lime-400 px-4 py-2 text-sm font-bold text-black">Profil einrichten</button>
           </section>
         )}
+
+        <section className="mb-5 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <article className="rounded-2xl border border-lime-400/25 bg-lime-400/[0.08] p-5 sm:p-6"><p className="text-xs font-bold uppercase tracking-widest text-lime-400">Heute sinnvoll</p><h2 className="mt-2 text-2xl font-black">{recentWorkout ? daysSinceWorkout === 0 ? "Du warst heute schon da." : `${daysSinceWorkout} ${daysSinceWorkout === 1 ? "Tag" : "Tage"} seit deinem letzten Training.` : "Dein erstes Training wartet."}</h2><p className="mt-2 text-sm text-gray-300">{recentWorkout ? `Setze mit „${recentWorkout.name}“ den nächsten Schritt.` : "Starte mit einem leeren Training und baue deine Historie auf."}</p><button onClick={() => router.push("/training")} className="mt-5 rounded-xl bg-lime-400 px-4 py-3 text-sm font-bold text-black">Training starten</button></article>
+          <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5 sm:p-6"><p className="text-xs font-bold uppercase tracking-widest text-lime-400">Wochen-Check-in</p><h2 className="mt-2 text-2xl font-black">{currentWeekWorkouts} von {weeklyTarget} Tagen</h2><p className="mt-2 text-sm text-gray-400">{currentWeekWorkouts >= weeklyTarget ? "Wochenziel geschafft — stark geblieben." : `Noch ${weeklyTarget - currentWeekWorkouts} Training${weeklyTarget - currentWeekWorkouts === 1 ? "" : "en"} bis zu deinem Wochenziel.`}</p><div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-lime-400" style={{ width: `${Math.min(100, (currentWeekWorkouts / weeklyTarget) * 100)}%` }} /></div></article>
+        </section>
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <article className="rounded-2xl border border-white/10 bg-[#11141c] p-5">

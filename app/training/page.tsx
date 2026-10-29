@@ -9,6 +9,7 @@ type SetEntry = {
   id: string;
   weight: string;
   reps: string;
+  rpe?: string;
 };
 
 type SavedExercise = {
@@ -16,6 +17,8 @@ type SavedExercise = {
   name: string;
 };
 type Group = { id: string; name: string };
+type PreviousPerformance = { weight: number; reps: number; bestWeight: number };
+type CompletionSummary = { prs: string[]; shared: boolean };
 
 type ExerciseEntry = {
   id: string;
@@ -41,6 +44,8 @@ export default function TrainingPage() {
   const [clientSessionId, setClientSessionId] = useState("");
   const [draftRevision, setDraftRevision] = useState(0);
   const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [previousByExercise, setPreviousByExercise] = useState<Record<string, PreviousPerformance>>({});
+  const [completion, setCompletion] = useState<CompletionSummary | null>(null);
 
   useEffect(() => {
     async function initialize() {
@@ -64,6 +69,22 @@ export default function TrainingPage() {
       }
       const { data: groupData } = await supabase.rpc("get_my_groups");
       setGroups((groupData ?? []) as Group[]);
+      const { data: historyData } = await supabase
+        .from("workouts")
+        .select("started_at, workout_exercises(exercise_name, workout_sets(weight, reps))")
+        .not("finished_at", "is", null)
+        .order("started_at", { ascending: false })
+        .limit(50);
+      const historyMap: Record<string, PreviousPerformance> = {};
+      for (const workout of (historyData ?? []) as Array<{ workout_exercises?: Array<{ exercise_name: string; workout_sets?: Array<{ weight: number; reps: number }> }> }>) {
+        for (const exercise of workout.workout_exercises ?? []) {
+          const key = exercise.exercise_name.trim().toLowerCase();
+          if (!key || historyMap[key]) continue;
+          const sets = (exercise.workout_sets ?? []).map((set) => ({ weight: Number(set.weight) || 0, reps: Number(set.reps) || 0 })).filter((set) => set.weight > 0 || set.reps > 0);
+          if (sets.length > 0) historyMap[key] = { weight: sets[0].weight, reps: sets[0].reps, bestWeight: Math.max(...sets.map((set) => set.weight)) };
+        }
+      }
+      setPreviousByExercise(historyMap);
 
       const { data: draftData } = await supabase.rpc("get_my_workout_draft");
       const draft = draftData?.[0] as {
@@ -123,6 +144,7 @@ export default function TrainingPage() {
           id: crypto.randomUUID(),
           weight: "",
           reps: "",
+          rpe: "",
         },
       ],
     };
@@ -251,6 +273,7 @@ export default function TrainingPage() {
                   id: crypto.randomUUID(),
                   weight: exercise.sets.at(-1)?.weight ?? "",
                   reps: "",
+                  rpe: "",
                 },
               ],
             }
@@ -259,10 +282,26 @@ export default function TrainingPage() {
     );
   }
 
+  function getRecommendation(name: string) {
+    const previous = previousByExercise[name.trim().toLowerCase()];
+    if (!previous) return null;
+    const increase = previous.reps >= 8 && previous.weight > 0 ? 2.5 : 0;
+    return { weight: previous.weight + increase, reps: previous.reps >= 8 ? previous.reps : previous.reps + 1 };
+  }
+
+  function applyRecommendation(exerciseId: string, name: string) {
+    const recommendation = getRecommendation(name);
+    if (!recommendation) return;
+    setExercises((current) => current.map((exercise) => exercise.id === exerciseId
+      ? { ...exercise, sets: exercise.sets.map((set, index) => index === 0 ? { ...set, weight: String(recommendation.weight), reps: String(recommendation.reps) } : set) }
+      : exercise));
+    setMessage("Empfehlung übernommen — jetzt Satz abschließen.");
+  }
+
   function updateSet(
     exerciseId: string,
     setId: string,
-    field: "weight" | "reps",
+    field: "weight" | "reps" | "rpe",
     value: string
   ) {
     setExercises((current) =>
@@ -365,6 +404,7 @@ export default function TrainingPage() {
               set_number: index + 1,
               weight: Number(set.weight),
               reps: Number(set.reps),
+              rpe: set.rpe?.trim() ? Number(set.rpe) : null,
             }))
           );
 
@@ -381,11 +421,16 @@ export default function TrainingPage() {
           ? ` Training gespeichert, aber nicht geteilt: ${shareError.message}`
           : " Mit deiner Crew geteilt.";
       }
+      const prs = finish ? exercises.filter((exercise) => {
+        const bestToday = Math.max(...exercise.sets.map((set) => Number(set.weight) || 0));
+        const previousBest = previousByExercise[exercise.name.trim().toLowerCase()]?.bestWeight ?? 0;
+        return bestToday > 0 && bestToday > previousBest;
+      }).map((exercise) => exercise.name) : [];
       setMessage(finish ? `Training gespeichert und abgeschlossen.${shareMessage}` : "Training gespeichert.");
 
       if (finish) {
         await supabase.rpc("discard_my_workout_draft", { p_client_session_id: clientSessionId });
-        router.push("/dashboard");
+        setCompletion({ prs, shared: Boolean(selectedGroupId && !shareMessage.includes("nicht geteilt")) });
       }
     } catch (error) {
       setMessage(
@@ -425,6 +470,7 @@ export default function TrainingPage() {
         <p className="text-sm font-bold uppercase tracking-widest text-lime-400">
           Trainingstagebuch
         </p>
+        {completion && <section className="mt-5 rounded-2xl border border-lime-400/30 bg-lime-400/[0.08] p-5"><p className="text-xs font-bold uppercase tracking-widest text-lime-400">Training geschafft</p><h2 className="mt-2 text-2xl font-black">Starker Abschluss.</h2><p className="mt-2 text-sm text-gray-300">{completion.prs.length > 0 ? `Neue Bestleistung: ${completion.prs.join(", ")}.` : "Training gespeichert — beim nächsten Mal bauen wir darauf auf."}</p><p className="mt-2 text-sm text-gray-400">{completion.shared ? "Deine Crew kann den Abschluss jetzt sehen." : "Dieses Training bleibt privat."}</p><button type="button" onClick={() => router.push("/dashboard")} className="mt-4 rounded-xl bg-lime-400 px-4 py-3 font-bold text-black">Zum Dashboard</button></section>}
 
         <h1 className="mt-2 text-4xl font-black">Neues Training</h1>
         <p className="mt-2 text-xs text-gray-500" aria-live="polite">
@@ -528,6 +574,7 @@ export default function TrainingPage() {
                   Entfernen
                 </button>
               </div>
+              {getRecommendation(exercise.name) && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-lime-400/20 bg-lime-400/[0.06] p-3"><div><p className="text-xs font-bold uppercase tracking-widest text-lime-400">Dein nächster Schritt</p><p className="mt-1 text-sm text-gray-300">Letztes Mal: {previousByExercise[exercise.name.trim().toLowerCase()]?.weight} kg × {previousByExercise[exercise.name.trim().toLowerCase()]?.reps} · Heute: <strong>{getRecommendation(exercise.name)?.weight} kg × {getRecommendation(exercise.name)?.reps}</strong></p></div><button type="button" onClick={() => applyRecommendation(exercise.id, exercise.name)} className="rounded-lg bg-lime-400 px-3 py-2 text-xs font-bold text-black">Übernehmen</button></div>}
 
               <div className="mb-2 grid grid-cols-[40px_1fr_1fr_32px] gap-2 text-xs text-gray-400">
                 <span>Satz</span>
@@ -537,6 +584,7 @@ export default function TrainingPage() {
               </div>
 
               {exercise.sets.map((set, setIndex) => (
+                <>
                 <div
                   key={set.id}
                   className="mb-2 grid grid-cols-[40px_1fr_1fr_32px] items-center gap-2"
@@ -601,6 +649,8 @@ export default function TrainingPage() {
                     ×
                   </button>
                 </div>
+                <label className="mb-2 block text-[11px] text-gray-500">Tagesform / RPE <select value={set.rpe ?? ""} onChange={(event) => updateSet(exercise.id, set.id, "rpe", event.target.value)} className="ml-2 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-gray-300"><option value="">optional</option>{Array.from({ length: 11 }, (_, value) => <option key={value} value={value}>{value}/10</option>)}</select></label>
+                </>
               ))}
 
               <button
