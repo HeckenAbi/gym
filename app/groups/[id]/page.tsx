@@ -150,7 +150,7 @@ function GroupDetailsContent() {
     setError("");
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData.session) {
-      router.replace("/");
+      router.replace(`/?returnTo=${encodeURIComponent(`/groups/${groupId}`)}`);
       return;
     }
     setUserId(sessionData.session.user.id);

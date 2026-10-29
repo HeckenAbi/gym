@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 type IconName = "home" | "dumbbell" | "chart" | "user" | "users";
 
@@ -42,13 +42,31 @@ const items: { label: string; href: string; icon: IconName; match: "dashboard" |
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [fragment, setFragment] = useState("");
   const isTraining = pathname === "/training" || pathname.startsWith("/training/");
+
+  useEffect(() => {
+    const syncFragment = () => setFragment(window.location.hash);
+    syncFragment();
+    window.addEventListener("hashchange", syncFragment);
+    window.addEventListener("popstate", syncFragment);
+    return () => {
+      window.removeEventListener("hashchange", syncFragment);
+      window.removeEventListener("popstate", syncFragment);
+    };
+  }, [pathname]);
 
   function isActive(match: (typeof items)[number]["match"]) {
     if (match === "training") return isTraining;
-    if (match === "dashboard") return pathname === "/dashboard";
+    if (match === "dashboard") return pathname === "/dashboard" && fragment !== "#verlauf";
+    if (match === "history") return pathname === "/dashboard" && fragment === "#verlauf";
     if (match === "groups") return pathname.startsWith("/groups");
     return false;
+  }
+
+  function handleNavClick(match: (typeof items)[number]["match"]) {
+    if (match === "history") setFragment("#verlauf");
+    else if (match === "dashboard") setFragment("");
   }
 
   return (
@@ -68,6 +86,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 key={item.match}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
+                onClick={() => handleNavClick(item.match)}
                 className={`nav-link ${active ? "nav-link-active" : ""}`}
               >
                 <span className="h-5 w-5"><NavIcon name={item.icon} /></span>
@@ -98,6 +117,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               key={item.match}
               href={item.href}
               aria-current={active ? "page" : undefined}
+              onClick={() => handleNavClick(item.match)}
               className={`mobile-nav-link ${active ? "mobile-nav-link-active" : ""}`}
             >
               <span className="h-[19px] w-[19px]"><NavIcon name={item.icon} /></span>

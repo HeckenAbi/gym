@@ -34,7 +34,7 @@ export default function GroupsPage() {
     setError("");
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData.session) {
-      router.replace("/");
+      router.replace(`/?returnTo=${encodeURIComponent("/groups")}`);
       return;
     }
     setUserId(sessionData.session.user.id);

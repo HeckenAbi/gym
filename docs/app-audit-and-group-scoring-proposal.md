@@ -1,43 +1,52 @@
 # Gym Battle – Funktionsprüfung und Gruppenliga
 
+**Aktualisiert am 29. Oktober 2026.** Dieser Stand ersetzt die früheren Hinweise im Dokument, dass der Supabase-Migrationsstand unbekannt sei oder die Community-Migration noch nicht angewendet wurde.
+
 ## Prüfungsgrenze
 
-Die Prüfung umfasst Repository-Code und eine isolierte PGlite-PostgreSQL-Instanz mit synthetischen Nutzern. Sie ist kein Abnahmetest gegen das tatsächliche Supabase- oder Hosting-Projekt. PGlite bestätigt die Migration und zentrale RLS-/Wertungspfade, aber nicht Live-Auth, PostgREST, echte Umgebungsvariablen oder E-Mail-/Redirect-Einstellungen.
+Die Prüfung umfasst Repository-Code, PGlite-Tests mit synthetischen Nutzern, den Live-Migrationsverlauf und ausgewählte schreibgeschützte Rechte-/Bestandsabfragen auf dem Supabase-Projekt „Gym Battle“ sowie die HTTPS-Preview. Es wurde **kein** echter Benutzer angemeldet; Gruppenerstellung, Einladungsbeitritt, Teilen und Cloud-Sync wurden daher nicht als angemeldeter Nutzer gegen Live-Daten ausgeführt. Es wurden keine Testgruppen oder Einladungen in der Live-Datenbank angelegt.
 
-Die zuvor bereitgestellte Handyvorschau wurde mit `https://example.supabase.co` und einem Platzhalter-Publishable-Key gestartet. Sie kann die UI zeigen, ist aber nicht mit einer echten Datenbank verbunden; Anmeldung, Gruppenerstellung, Cloud-Speicherung und Sync können dort nicht funktionieren.
+Die Live-Historie enthält sieben Einträge: `20261029090319`, `20261029092310`, `20261029092641`, `20261029092725`, `20261029092805`, `20261029092854` und `20261029093100`. Bei der letzten Bestandsprüfung waren drei Trainings vorhanden und null Gruppen, Gruppenmitglieder oder Einladungen. Die vorhandenen Trainings wurden nicht umgeschrieben.
+
+Eine frühere, inzwischen abgelöste Handyvorschau verwendete Platzhalterwerte und hatte keine Datenbankverbindung. Die aktuelle sitzungsgebundene Preview verwendet eine echte Supabase-URL und einen öffentlichen Publishable-Key aus einer von Git ignorierten `.env.local`-Datei. Es wurde kein dauerhaftes Hostingprojekt konfiguriert.
 
 ## Ergebnis nach Bereichen
 
-| Bereich | Einschätzung aus dem Repository | Wichtigste Grenze |
+| Bereich | Aktueller Stand | Verbleibende Grenze |
 | --- | --- | --- |
-| Anmeldung und Passwort-Reset | Anmelde-, Registrierungs- und Reset-Abläufe sowie Einladung-Rückkehrpfad sind verbunden. | Supabase-Redirect- und E-Mail-Einstellungen wurden nicht live geprüft. Ein direkter `/groups`-Aufruf ohne Session verliert das Rückkehrziel. |
-| Dashboard und Trainingsverlauf | Lädt eigene Workouts, Sätze und Fortschritt; Suche und Trainingsdetails sind eingebunden. | Der Verlauf-Navigationspunkt wird nicht als aktiv markiert. Keine Live-Abfrage mit echten Nutzerdaten. |
-| Training, Autosave und Offline | Lokaler Entwurf, Cloud-Draft, Konfliktentscheidung und atomarer Abschluss sind angelegt. | Client und SQL haben nicht deckungsgleiche Eingabegrenzen. Beim Verlassen vor Ablauf des Autosave-Timers kann die Cloud-Synchronisierung noch ausstehen. |
-| Trainingsdetails bearbeiten | Laden, Bearbeiten und Löschen sind verbunden. | „Abbrechen“ setzt geänderten React-State nicht zurück. Mehrere Datenbank-Schreibschritte sind nicht gemeinsam transaktional. |
-| Gruppen, Feed und Einladungen | Gruppen-/Einladungs-RPCs und RLS sind mit der UI verbunden; Freigabe bleibt opt-in. Gruppenerstellungsfehler werden jetzt nach Migration, Sitzung, Zeitzone und Verbindung unterschieden. | Der echte Supabase-Migrationsstand ist weiterhin unbekannt. |
-| Gruppenliga | Wochenpunkte ohne Wochenobergrenze, feste Vier-Wochen-Saisons, Crew-Challenge und Punktstatus im Feed sind implementiert. | Die neue Migration muss noch im echten Zielprojekt auf Staging geprüft werden. |
-| Übungsbibliothek | 50 Übungen mit Suche/Aliasen, Filtern, Detailhinweisen und direkter Übernahme in ein Training. | Animationen sind schematische SVG-Loops, keine gefilmten Videos. Live-Anmeldung und Trainingsübergabe benötigen echtes Supabase. |
+| Anmeldung und Passwort-Reset | Login-/Registrierungs-/Reset-Abläufe sind vorhanden. Direkte Aufrufe von `/groups` und `/groups/:id` behalten das Rücksprungziel; Login-Modal mit `returnTo=/groups` wurde im Browser geöffnet. | Kein Login mit einem realen Nutzer; Supabase-E-Mail- und Redirect-Einstellungen nicht live durchgespielt. Leaked-Password-Schutz ist weiterhin deaktiviert. |
+| Dashboard und Trainingsverlauf | Verlauf-Navigation wird bei `#verlauf` aktiv hervorgehoben. | Keine Live-Abfrage mit einem eingeloggten Nutzer. |
+| Training, Autosave und Offline | Lokale Entwürfe, revisionsbasiertes Cloud-Autosave, Offline-Abschlussvormerkung, Wiederverbindungs-Sync und Konfliktentscheidung sind implementiert. PWA-App-Hülle wurde bei 390×844 getestet; `/training` wurde bei simulierter Offline-Verbindung aus dem Cache mit HTTP 200 geöffnet. | Echte Anmeldung und anschließender Sync mit einem Testkonto stehen aus. Client und SQL haben noch nicht deckungsgleiche Eingabegrenzen; Cloud-Flush beim Verlassen wird nicht sichtbar abgewartet. |
+| Trainingsdetails bearbeiten | Laden, Bearbeiten und Löschen sind verbunden. | „Abbrechen“ setzt geänderten React-State nicht zuverlässig auf einen Snapshot zurück. Mehrere Datenbank-Schreibschritte sind nicht gemeinsam transaktional. |
+| Gruppen, Feed und Einladungen | Sieben Community-/League-Migrationen sind live. UI verwendet die vorgesehenen RPCs; Einladung ist ein einmalig nutzbarer, sieben Tage gültiger Bearer-Link mit serverseitig gespeichertem Hash. | Echte Gruppenerstellung, Einladung und Feed-/Kommentar-/Reaktionstests mit getrennten Live-Nutzern stehen noch aus. |
+| Gruppenliga | Unbegrenzte Wochenpunkte, Vier-Wochen-Saison, Crew-Challenge und Punktstatus im Feed sind live implementiert. Die relevanten Gruppen-RPCs sind für `authenticated` ausführbar und `SECURITY DEFINER` unter `postgres`; die Funktionseigentümer können die intern gesperrten Gruppen-Helper verwenden. | Keine Live-Wertung mit realen Trainingsdaten erprobt. |
+| Übungsbibliothek | 50 Übungen, aufgeteilt in 25 Kurzhantel und 25 Kabelturm, mit Suche/Filtern, Technikhinweisen und schematischen animierten SVG-Loops. | Die Animationen sind keine gefilmten Videoanleitungen. |
+| PWA | Manifest, Icons, Service Worker und Offline-Hinweis sind vorhanden. Cache-Routen, Icons und Offline-Trainingsroute wurden im Browser geprüft. | Erster Start braucht mindestens einen Onlinebesuch; echte Smartphone-/Flugmodusprüfung steht noch aus. |
 
-## Gruppenerstellung
+## Gruppenerstellung und Rechte
 
-Der Gruppen-Handler ruft `create_private_group` mit den in der Repository-Migration definierten Parametern auf. Die Gruppe und Owner-Mitgliedschaft werden in der RPC atomar erstellt; der isolierte Datenbanktest bestätigt diesen Pfad. Das Problem beim zuletzt geteilten Vorschaulink war die fehlende echte Supabase-Verbindung durch Platzhalterwerte. Für eine andere gehostete Version sind Migration, Schema, Berechtigung und Projektumgebungswerte vor Ort zu prüfen.
+Der Gruppen-Handler ruft `create_private_group` mit den in der Repository-Migration definierten Parametern auf. Gruppe und Owner-Mitgliedschaft werden in der RPC atomar erstellt; PGlite bestätigt diesen Pfad. Der zuvor geteilte Preview-Link scheiterte an Platzhalterwerten; die aktuelle Preview ist mit echten öffentlichen Supabase-Werten konfiguriert. Der Live-Migrationsverlauf wurde erneut geprüft.
 
-Die Gruppenoberfläche prüft die IANA-Zeitzone nun vor dem Speichern und zeigt getrennte Hinweise für fehlende RPC-/Migration, abgelaufene Anmeldung, ungültige Zeitzone und nicht erreichbares Supabase. Die Migration wurde nicht auf ein unbekanntes oder produktives Projekt angewendet.
+Der aktuelle Zugriffsschutz sperrt direkten API-Zugriff auf sensible Gruppen-, Kommentar-, Reaktions-, Profil- und Autosave-Tabellen. Die UI verwendet dafür Gruppen-/Sync-RPCs. Eine schreibgeschützte Live-Prüfung bestätigte, dass die relevanten RPCs für `authenticated` ausführbar sind und unter einem festen Funktions-Owner mit `SECURITY DEFINER` laufen. Die Helper `is_group_member` und `is_group_admin` sind für direkte Aufrufe durch `authenticated`/`anon` widerrufen; das ist im aktuellen Modell beabsichtigt, weil die Tabellenrechte ebenfalls gesperrt sind und die RPC-Owner die Helper weiterhin ausführen können. Es wurde kein zusätzlicher Helper-Grant vorgenommen.
 
 ## Implementierte Liga-Regeln
 
-- **Wochenwertung:** ein Punkt je qualifiziertem Trainingstag; höchstens ein Punkt pro Person und lokalem Gruppentag, aber keine Wochenobergrenze. Mehrere Einheiten am selben Tag zählen einmal. Qualifikation erfordert mindestens drei gültige Sätze und insgesamt zehn Wiederholungen; Gewicht 0 bleibt erlaubt.
+- **Wochenwertung:** ein Punkt je qualifiziertem Trainingstag; höchstens ein Punkt pro Person und lokalem Gruppentag, aber keine Wochenobergrenze. Mehrere Einheiten am selben Tag zählen einmal. Qualifikation erfordert mindestens drei gültige Sätze und insgesamt zehn Wiederholungen; Gewicht null bleibt erlaubt.
 - **Teilnahme:** nur abgeschlossene, ausdrücklich für genau diese Gruppe geteilte Trainings zählen. Abschluss und Teilen müssen in derselben Gruppenwoche geschehen. Eine spätere Freigabe kann keine geschlossene Woche rückwirkend verändern. Beim Teilen wird die Punktequalifikation gespeichert; direkt veränderbare Abschlusszeitpunkte sind serverseitig gesperrt. Privat gemachte Trainings verlieren ihren Punkt.
 - **Vier-Wochen-Saison:** feste, gruppenzeitzonenbasierte Saisonblöcke. Die Saisonwertung ist die Summe der drei punktstärksten Wochen aus vier; Gewicht und Gesamtvolumen bleiben außen vor. Die aktuelle und vorherige Saison sind abrufbar.
 - **Crew-Challenge:** gemeinsames Wochenziel von zwei qualifizierten Trainingstagen je aktivem Mitglied. Die UI zeigt Fortschritt und bei vollständigem Ziel ein gemeinsames Abzeichen. Dieses Abzeichen vergibt keine zusätzlichen Einzelpunkte.
 - **Transparenz:** der Feed kennzeichnet, ob ein geteilter Beitrag einen Ligapunkt gebracht hat. Die Ranglistenansicht erklärt die Wochen- und Saisonregeln.
 
-## Verifikation der neuen Wertung
+## Verifikation
 
-`npm run test:community-db` führt beide Migrationen in isoliertem PGlite aus. Die Tests prüfen unter anderem mindestens drei Sätze/zehn Wiederholungen, null Gewicht, direkte Finished-at-Manipulation, Ein-Punkt-pro-Tag-Deduplizierung, sieben verschiedene Punkte in einer Woche (also keine Wochenobergrenze), verspätete Freigabe, Drei-aus-vier-Saisonwertung, Crew-Challenge und Mitgliedschaftstrennung.
+`npm run test:community-db` spielt die Community-/League-Migrationen in PGlite auf einem frischen und einem Legacy-Schema ab. Die Tests umfassen unter anderem mindestens drei Sätze/zehn Wiederholungen, Nullgewicht, Schutz des Abschlusszeitpunkts, Ein-Punkt-pro-Tag-Deduplizierung, mehrere punktberechtigte Tage pro Woche, verspätete Freigabe, Drei-aus-vier-Saisonwertung, Crew-Challenge, Feed/Kommentare/Reaktionen, RLS-Isolation und Owner-Übergabe.
 
-Zusätzlich bestanden für den aktuellen Feature-Branch ESLint, TypeScript, `git diff --check` sowie ein Next.js-Produktionsbuild mit nicht echten Supabase-Platzhalterwerten. Diese Prüfungen ersetzen keine Live-Abnahme.
+Für den aktuellen Stand bestanden ESLint, TypeScript, `git diff --check` und der Next.js-Produktionsbuild. Die HTTPS-Preview lieferte für App, Route-Manifest, PWA-Manifest, Service Worker, Offline-Seite und Icons HTTP 200. Ein mobiler Chromium-Test bei 390×844 zeigte keine horizontale Überbreite. Nach dem Cache-Aufbau wurde `/training` bei simulierter Offline-Verbindung mit HTTP 200 aus der Offline-Shell geöffnet.
 
-## Noch erforderlicher Live-Schritt
+## Noch erforderliche Schritte
 
-Vor einem Einsatz müssen die vorhandene Supabase-Basis und Policies des tatsächlichen Projekts mit beiden versionierten Community-/Liga-Migrationen abgeglichen und die Anwendung zuerst auf einer isolierten Supabase-Staging-Instanz mit getrennten Nutzern getestet werden. Die temporäre Vorschau muss außerdem auf echte Hosting-Umgebungswerte zeigen. Erst danach können Gruppenerstellung, Trainingsteilung und Rangliste mit einem echten Handy-Login abgenommen werden.
+1. In einem dauerhaft gebundenen Hostingprojekt die öffentlichen Werte `NEXT_PUBLIC_SUPABASE_URL` und `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` setzen; die jetzige Preview ist sitzungsgebunden und keine stabile Produktions-URL.
+2. Mit getrennten echten Auth-Nutzern Gruppe erstellen, Einladung annehmen, ein Training freiwillig teilen und Feed, Kommentar/Reaktion, Rangliste/Punkte sowie Wiederverbindungs-Sync prüfen.
+3. Die verbleibenden Trainingsdetails verbessern: Client-/SQL-Eingabegrenzen angleichen, Cloud-Autosave beim Verlassen sichtbar abschließen, Abbrechen zurücksetzen und Detailänderungen atomar speichern.
+4. Die verbliebenen Supabase-Advisor-Hinweise (`auth_rls_initplan`, unbenutzte Indizes) prüfen und Leaked-Password-Protection mit Dashboard-/Planberechtigung abgleichen.
+5. Die Offline-Prüfung auf einem echten Smartphone wiederholen; die synthetische Browserprüfung ersetzt keinen vollständigen Geräte-/Flugmodus-Abnahmetest.

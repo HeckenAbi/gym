@@ -10,13 +10,17 @@ Die Next.js-/Supabase-App umfasst Gruppen, geteilte Trainings, Ranglisten, Chall
 
 **Training und Übungsbibliothek:** revisionierte Cloud-Drafts, atomarer/idempotenter Abschluss, IndexedDB-Outbox und explizite Konfliktwahl. Die Bibliothek umfasst genau 50 Übungen (25 Kurzhantel, 25 Kabelturm) mit schematischen SVG-Loops, Filtern, Technikhinweisen und direkter Übernahme ins Training.
 
+**PWA/Offline-Hülle:** installierbares Manifest im dunklen Platin-Stil, eigene App-/Apple-Icons, Service Worker und Offline-Hinweis. Beim ersten Online-Aufruf werden die öffentliche App-Hülle für `/`, `/dashboard`, `/training`, `/library`, `/groups`, notwendige statische Assets und Icons vorgeladen. Auth-, Einladungs- und Passwort-Reset-URLs sowie API-Aufrufe werden nicht gespeichert; Trainingsdaten bleiben in der bestehenden IndexedDB-/Supabase-Synchronisierung. Service Worker, Cache und eine `/training`-Navigation bei simulierter Offline-Verbindung wurden geprüft; ein physischer Smartphone-/Flugmodus-Test steht noch aus.
+
+**Navigation:** „Verlauf“ reagiert nun auf `#verlauf`; nicht angemeldete Aufrufe von `/groups` und `/groups/:id` führen nach dem Login an die gewünschte Stelle zurück.
+
 ## Live-Projekt „Gym Battle“ – bestätigter Stand
 
 Alle sieben Migrationen sind auf Supabase-Projekt `vbppgevobtshfumdpwms` angewendet: `20261029090319 legacy_group_schema_compat`, `20261029092310 community_schema_and_policies`, `20261029092641 community_group_management`, `20261029092725 community_feed_and_sharing`, `20261029092805 community_workout_sync`, `20261029092854 group_league_scoring` und `20261029093100 community_fk_indexes`.
 
 Die Datenbankprüfung bestätigte 3 Trainings, 0 Gruppen, 0 Mitglieder, 0 Einladungen und 0 punktberechtigte Shares. Die vorhandenen Trainings wurden nicht gelöscht oder umgeschrieben. Die acht vom Supabase-Performanceberater gemeldeten fehlenden Fremdschlüssel-Indizes wurden ergänzt und werden nicht mehr als unindiziert gemeldet.
 
-Schema, RLS, Gruppen-/Einladungsfunktionen, Feed/Teilen, Sync-RPCs und League-Wertung sind installiert. Eine Ende-zu-Ende-Prüfung mit echten Auth-Nutzern wurde noch nicht durchgeführt.
+Schema, RLS, Gruppen-/Einladungsfunktionen, Feed/Teilen, Sync-RPCs und League-Wertung sind installiert. Read-only wurde bestätigt, dass die relevanten Gruppen-/Sync-RPCs `SECURITY DEFINER` unter dem PostgreSQL-Owner laufen und für `authenticated` ausführbar sind; direkte Tabellen- und Helper-Aufrufe sind im aktuellen Modell widerrufen. Eine Ende-zu-Ende-Prüfung mit echten Auth-Nutzern wurde noch nicht durchgeführt.
 
 ## Kompatibilität und lokale Prüfung
 
@@ -34,9 +38,9 @@ Referenzen: [SECURITY DEFINER-Hinweis](https://supabase.com/docs/guides/database
 
 ## Noch ausstehende Produktivschritte
 
-1. Die Hosting-Umgebungsvariablen von Platzhaltern auf Supabase-URL und Publishable/Anon-Key setzen.
-2. Gruppenanlage, Einladung und freiwilliges Teilen eines Trainings mit echten Auth-Nutzern im PC-/Handy-Preview live testen.
-3. Kleine UI-Nacharbeiten: Verlauf als aktive Route markieren und Rücksprungadresse nach direktem `/groups`-Login erhalten.
-4. Client- und SQL-Eingabegrenzen im Training angleichen; Cloud-Autosave beim Verlassen sichtbar abschließen; Trainingsdetails-Abbrechen soll Änderungen zurücksetzen und mehrere Detailänderungen atomar speichern.
-
-PWA-Erststart ohne Netz ist nicht enthalten.
+1. **Dauerhaftes Hosting:** Die temporäre PC-/Handy-Preview liest die echten Browser-Variablen aus einer lokal ignorierten `.env.local`-Datei. Für eine stabile öffentliche Bereitstellung müssen `NEXT_PUBLIC_SUPABASE_URL` und `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in dem tatsächlich verbundenen Hosting-Projekt gesetzt werden; in dieser Session ist kein WebDev-Hostingprojekt gebunden.
+2. **Ende-zu-Ende-Live-Test:** Gruppenanlage, Einladungsbeitritt, freiwilliges Teilen, Punktevergabe und Offline-Draft-Sync mit echten angemeldeten Nutzern im PC-/Handy-Preview prüfen. Die Live-Datenbank hat noch 0 Gruppen und 0 Einladungen; Trainingsbestand und App-Code wurden für die Preview nicht verändert.
+3. **Training-Polish:** Client- und SQL-Eingabegrenzen angleichen; Cloud-Autosave beim Verlassen sichtbar abschließen; „Abbrechen“ in Trainingsdetails soll Änderungen zurücksetzen und mehrere Detailänderungen atomar speichern.
+4. **Supabase-Advisor:** 27 `auth_rls_initplan`-Hinweise und Hinweise auf bislang unbenutzte Indizes bleiben. Die acht zuvor gemeldeten fehlenden Fremdschlüssel-Indizes sind angewendet.
+5. **Auth-Einstellung:** Supabase Leaked-Password-Protection ist weiterhin deaktiviert; sie wurde nicht verändert, weil dafür der Auth-Provider im Dashboard angepasst werden muss und die Projekt-/Planberechtigung in dieser Session nicht verifiziert wurde.
+6. **PWA-Gerätetest:** Ein mobiler Chromium-Test bei 390×844 zeigte keinen horizontalen Überlauf; `/training` wurde mit aufgebautem Cache bei simulierter Offline-Verbindung mit HTTP 200 geladen. Ein physischer Smartphone-/Flugmodus-Test mit lokalem Trainingsentwurf und Wiederverbindung steht noch aus. Erstinstallation ohne vorherigen Online-Aufruf ist nicht möglich.
