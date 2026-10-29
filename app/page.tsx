@@ -13,6 +13,7 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
   const [pendingInvite] = useState(() =>
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("invite") || ""
@@ -56,6 +57,17 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleResetRequest(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!email.trim()) { setMessage("Gib zuerst deine E-Mail-Adresse ein."); return; }
+    setLoading(true); setMessage("");
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/profile?reset=1`,
+    });
+    setMessage(error ? "Die Anfrage konnte nicht gesendet werden. Prüfe die E-Mail-Adresse und versuche es erneut." : "Wenn ein Konto zu dieser Adresse existiert, erhältst du gleich eine E-Mail zum Zurücksetzen.");
+    setLoading(false);
   }
 
   return (
@@ -182,7 +194,7 @@ export default function Home() {
               </button>
             </div>
 
-            <form onSubmit={handleAuth} className="space-y-4">
+            <form onSubmit={forgotMode ? handleResetRequest : handleAuth} className="space-y-4">
               <label className="block text-sm text-gray-300">
                 E-Mail
                 <input
@@ -196,7 +208,7 @@ export default function Home() {
                 />
               </label>
 
-              <label className="block text-sm text-gray-300">
+              {!forgotMode && <label className="block text-sm text-gray-300">
                 Passwort
                 <input
                   type="password"
@@ -210,7 +222,9 @@ export default function Home() {
                   className="mt-2 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 text-white outline-none focus:border-lime-400"
                   placeholder="Mindestens 6 Zeichen"
                 />
-              </label>
+              </label>}
+
+              {!forgotMode && isLogin && <button type="button" onClick={() => { setForgotMode(true); setMessage(""); }} className="text-sm text-lime-400 hover:underline">Passwort vergessen?</button>}
 
               {message && (
                 <p
@@ -226,18 +240,15 @@ export default function Home() {
                 disabled={loading}
                 className="w-full rounded-xl bg-lime-400 px-4 py-3 font-bold text-black hover:bg-lime-300 disabled:opacity-50"
               >
-                {loading
-                  ? "Einen Moment ..."
-                  : isLogin
-                    ? "Anmelden"
-                    : "Kostenlos registrieren"}
+                {loading ? "Einen Moment ..." : forgotMode ? "Reset-Link senden" : isLogin ? "Anmelden" : "Kostenlos registrieren"}
               </button>
             </form>
 
             <p className="mt-5 text-center text-sm text-gray-400">
-              {isLogin ? "Noch kein Konto?" : "Du hast schon ein Konto?"}{" "}
+              {forgotMode ? "Zurück zur Anmeldung" : isLogin ? "Noch kein Konto?" : "Du hast schon ein Konto?"}{" "}
               <button
                 onClick={() => {
+                  if (forgotMode) { setForgotMode(false); setMessage(""); return; }
                   setIsLogin(!isLogin);
                   setMessage("");
                 }}
