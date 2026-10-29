@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 
 const db = new PGlite();
 const migrations = await Promise.all([
+  "../migrations/20261028225000_legacy_group_schema_compat.sql",
   "../migrations/20261028230000_community_and_workout_sync.sql",
   "../migrations/20261029001000_group_league_scoring.sql",
 ].map((path) => readFile(new URL(path, import.meta.url), "utf8")));
@@ -61,6 +62,45 @@ try {
     create function auth.uid() returns uuid language sql stable as $$
       select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
     $$;
+    create schema extensions;
+    create function extensions.digest(input text, algorithm text) returns bytea
+    language sql immutable as $$ select decode(md5(input) || md5('gym-test:' || input), 'hex') $$;
+    create table public.gym_groups (
+      id uuid primary key default gen_random_uuid(),
+      name text not null check (char_length(name) >= 1 and char_length(name) <= 60),
+      owner_id uuid not null references auth.users(id),
+      timezone text not null default 'Europe/Berlin',
+      created_at timestamptz not null default now()
+    );
+    create table public.group_members (
+      group_id uuid not null references public.gym_groups(id) on delete cascade,
+      user_id uuid not null references auth.users(id) on delete cascade,
+      joined_at timestamptz not null default now(),
+      primary key (group_id, user_id)
+    );
+    create table public.group_invites (
+      id uuid primary key default gen_random_uuid(),
+      group_id uuid not null references public.gym_groups(id) on delete cascade,
+      created_by uuid not null references auth.users(id),
+      token uuid not null unique default gen_random_uuid(),
+      expires_at timestamptz not null default (now() + interval '7 days'),
+      used_at timestamptz,
+      revoked boolean not null default false,
+      created_at timestamptz not null default now()
+    );
+    create function public.is_group_member(target_group uuid) returns boolean
+    language sql stable security definer as $$
+      select exists (select 1 from public.group_members gm where gm.group_id = target_group and gm.user_id = auth.uid())
+    $$;
+    alter table public.gym_groups enable row level security;
+    alter table public.group_members enable row level security;
+    alter table public.group_invites enable row level security;
+    create policy legacy_groups_read on public.gym_groups for select to authenticated
+      using (owner_id = auth.uid() or public.is_group_member(id));
+    create policy legacy_members_read on public.group_members for select to authenticated
+      using (user_id = auth.uid() or public.is_group_member(group_id));
+    create policy legacy_invites_read on public.group_invites for select to authenticated
+      using (created_by = auth.uid() or public.is_group_member(group_id));
     create table public.exercises (
       id uuid primary key default gen_random_uuid(),
       user_id uuid not null references auth.users(id),
@@ -71,7 +111,9 @@ try {
       user_id uuid not null references auth.users(id),
       name text not null,
       started_at timestamptz not null default now(),
-      finished_at timestamptz
+      finished_at timestamptz,
+      is_shared boolean not null default false,
+      group_id uuid references public.gym_groups(id)
     );
     create table public.workout_exercises (
       id uuid primary key default gen_random_uuid(),
@@ -88,12 +130,43 @@ try {
       reps integer
     );
   `);
+  const legacyGroupId = "11111111-1111-4111-8111-111111111111";
+  const legacyInviteId = "22222222-2222-4222-8222-222222222222";
+  const legacyToken = "33333333-3333-4333-8333-333333333333";
+  await db.exec(`
+    insert into auth.users(id,raw_user_meta_data) values
+      ('${A}','{"display_name":"Alex"}'),
+      ('${B}','{"display_name":"Bo"}'),
+      ('${C}','{"display_name":"C"}');
+    insert into public.gym_groups(id,name,owner_id,timezone)
+      values ('${legacyGroupId}','Legacy Crew','${C}','Europe/Berlin');
+    insert into public.group_members(group_id,user_id) values ('${legacyGroupId}','${C}');
+    insert into public.group_invites(id,group_id,created_by,token,expires_at)
+      values ('${legacyInviteId}','${legacyGroupId}','${C}','${legacyToken}'::uuid,now() + interval '7 days');
+    insert into public.workouts(user_id,name,started_at,finished_at,is_shared,group_id) values
+      ('${A}','Private legacy workout A',now() - interval '3 days',now() - interval '3 days',false,null),
+      ('${B}','Private legacy workout B',now() - interval '2 days',now() - interval '2 days',false,null),
+      ('${C}','Private legacy workout C',now() - interval '1 day',now() - interval '1 day',false,null);
+  `);
   for (const migration of migrations) await db.exec(migration);
-  await db.exec(`insert into auth.users(id,raw_user_meta_data) values ('${A}','{"display_name":"Alex"}'),('${B}','{"display_name":"Bo"}'),('${C}','{"display_name":"C"}');`);
 
   const profiles = await db.query("select user_id, display_name from public.profiles order by user_id");
   assert.equal(profiles.rows.length, 3);
   assert.match(profiles.rows.find((row) => row.user_id === C).display_name, /^Athlet /);
+
+  const legacyGroup = one(await db.query("select created_by, description, archived_at from public.gym_groups where id=$1", [legacyGroupId]));
+  assert.equal(legacyGroup.created_by, C, "legacy owner_id must be preserved as created_by");
+  const legacyMember = one(await db.query("select role, status from public.group_members where group_id=$1 and user_id=$2", [legacyGroupId, C]));
+  assert.equal(legacyMember.role, "owner");
+  assert.equal(legacyMember.status, "active");
+  const expectedLegacyHash = one(await db.query("select encode(extensions.digest($1::text,'sha256'),'hex') as hash", [legacyToken])).hash;
+  assert.equal(one(await db.query("select token_hash from public.group_invites where id=$1", [legacyInviteId])).token_hash, expectedLegacyHash);
+  const removedLegacyColumns = await db.query("select column_name from information_schema.columns where table_schema='public' and table_name='group_invites' and column_name in ('token','used_at','revoked') limit 10");
+  assert.equal(removedLegacyColumns.rows.length, 0, "raw/legacy invite columns must be removed after migration");
+  const legacyPolicyCount = one(await db.query("select count(*)::int as n from pg_catalog.pg_policies where schemaname='public' and tablename in ('gym_groups','group_members','group_invites') and policyname like 'legacy_%' limit 1")).n;
+  assert.equal(legacyPolicyCount, 0, "legacy permissive group policies must be replaced");
+  const preservedWorkouts = one(await db.query("select count(*)::int as total, count(*) filter (where group_id is not null)::int as grouped, count(*) filter (where is_shared)::int as shared from public.workouts limit 1"));
+  assert.deepEqual(preservedWorkouts, { total: 3, grouped: 0, shared: 0 }, "private legacy workouts must remain unchanged");
 
   const groupId = one(await asUser(A, () => db.query("select public.create_private_group('Test Crew','private','Europe/Berlin') as id"))).id;
   assert.equal(one(await asUser(A, () => db.query("select count(*)::int as n from public.get_my_groups()"))).n, 1);
@@ -155,7 +228,7 @@ try {
   await asUser(B, () => db.query("select public.toggle_group_reaction($1,$2,'strong')", [groupId, shareId]));
   assert.equal(one(await asUser(A, () => db.query("select count(*)::int as n from public.get_group_comments($1,$2)", [groupId, shareId]))).n, 1);
   await assert.rejects(() => asUser(C, () => db.query("select * from public.get_group_feed($1,20)", [groupId])));
-  assert.equal(one(await asUser(B, () => db.query("select count(*)::int as n from public.workouts"))).n, 0);
+  assert.equal(one(await asUser(B, () => db.query("select count(*)::int as n from public.workouts"))).n, 1, "user can only read their own preserved workout");
   await asUser(A, () => db.query("select public.unshare_finished_workout($1)", [shareId]));
   assert.equal((await asUser(B, () => db.query("select * from public.get_group_feed($1,20)", [groupId]))).rows.length, 0);
 
@@ -237,7 +310,27 @@ try {
   assert.equal((await asUser(B, () => db.query("select * from public.get_group_invite_preview($1)", [hash3]))).rows.length, 0);
   await asUser(A, () => db.query("select public.archive_group($1)", [group3]));
 
-  console.log("PASS: migrations apply; private groups and invites; draft revisions and atomic completion; 3-set/10-rep qualification; server-owned completion times; point snapshot and same-day deduplication; no weekly points cap; no retroactive shares; top-3-of-4 seasons; member-only weekly challenge; feed/comments/reactions and RLS isolation; ownership transfer and archive.");
+  const freshDb = new PGlite();
+  try {
+    await freshDb.exec(`
+      create role anon;
+      create role authenticated;
+      create schema auth;
+      create table auth.users (id uuid primary key default gen_random_uuid(), raw_user_meta_data jsonb not null default '{}'::jsonb);
+      create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+      create table public.exercises (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id), name text not null);
+      create table public.workouts (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id), name text not null, started_at timestamptz not null default now(), finished_at timestamptz);
+      create table public.workout_exercises (id uuid primary key default gen_random_uuid(), workout_id uuid not null references public.workouts(id) on delete cascade, exercise_id uuid references public.exercises(id), exercise_name text not null, position integer not null default 0);
+      create table public.workout_sets (id uuid primary key default gen_random_uuid(), workout_exercise_id uuid not null references public.workout_exercises(id) on delete cascade, set_number integer not null, weight numeric, reps integer);
+    `);
+    for (const migration of migrations) await freshDb.exec(migration);
+    const freshGroupColumns = one(await freshDb.query("select count(*)::int as n from information_schema.columns where table_schema='public' and table_name='gym_groups' and column_name in ('created_by','description','archived_at')"));
+    assert.equal(freshGroupColumns.n, 3, "fresh project migrations must create the canonical group schema");
+  } finally {
+    await freshDb.close();
+  }
+
+  console.log("PASS: fresh and legacy schema migrations; invite hashing and private workout preservation; private groups and invites; draft revisions and atomic completion; 3-set/10-rep qualification; server-owned completion times; point snapshot and same-day deduplication; no weekly points cap; no retroactive shares; top-3-of-4 seasons; member-only weekly challenge; feed/comments/reactions and RLS isolation; ownership transfer and archive.");
 } finally {
   await db.close();
 }
